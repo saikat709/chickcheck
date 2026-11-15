@@ -10,11 +10,16 @@ router = APIRouter(prefix="/api/stream", tags=["stream"])
 
 
 @router.get("/video")
-def get_video_stream(heatmap: bool = Query(False, description="Overlay density heatmap")):
+def get_video_stream(
+    heatmap: bool = Query(False, description="Overlay density heatmap"),
+    show_boxes: bool = Query(True, description="Render tracking boxes and entity ID numbers"),
+    box_shape: str = Query("corners", pattern="^(corners|solid|ellipse|reticle)$", description="Tracking box/shape style"),
+):
     """
     Yields multipart MJPEG video stream of annotated livestock footage.
     """
     pipeline.toggle_heatmap_overlay(heatmap)
+    pipeline.set_annotation_style(show_boxes=show_boxes, box_shape=box_shape)
 
     def frame_generator():
         last_frame = None

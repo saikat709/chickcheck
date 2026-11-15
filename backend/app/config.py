@@ -132,7 +132,7 @@ class Settings(BaseSettings):
     HEALTH_CLASSIFIER_PATH: Optional[str] = None
     PROCESS_EVERY_N: int = 2
     INFER_IMGSZ: int = 640
-    CONF_THRESHOLD: float = 0.15
+    CONF_THRESHOLD: float = 0.08
     DEVICE: Optional[str] = None  # None for auto-detect (cuda if available else cpu)
     TRACK_LOST_SECONDS: float = 2.5
     MAX_TRAIL_POINTS: int = 30

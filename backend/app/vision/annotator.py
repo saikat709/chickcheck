@@ -40,6 +40,8 @@ class FrameAnnotator:
         show_heatmap: bool = False,
         was_enhanced: bool = False,
         clusters: Optional[List[Dict[str, Any]]] = None,
+        show_boxes: bool = True,
+        box_shape: str = "corners",
     ) -> np.ndarray:
         out = frame.copy()
         h, w = out.shape[:2]
@@ -53,12 +55,11 @@ class FrameAnnotator:
         # 2. Render Spatial Clusters / Huddles (in dense crowd scenarios)
         if clusters:
             for cl in clusters:
-                if cl.get("size", 0) >= 3:
+                if cl.get("size", cl.get("count", 0)) >= 3:
                     cx, cy = int(cl["centroid"][0]), int(cl["centroid"][1])
                     cr = max(25, int(cl.get("radius", 40)))
-                    # Draw subtle pulsing circle / overlay for cluster
                     cv2.circle(out, (cx, cy), cr, (40, 140, 255), 2, lineType=cv2.LINE_AA)
-                    cl_label = f"Huddle: {cl['size']}"
+                    cl_label = f"Huddle: {cl.get('size', cl.get('count', 0))}"
                     (cl_w, cl_h), _ = cv2.getTextSize(cl_label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
                     cv2.rectangle(out, (cx - cl_w // 2 - 4, cy - cr - cl_h - 4), (cx + cl_w // 2 + 4, cy - cr), (24, 24, 27), -1)
                     cv2.putText(out, cl_label, (cx - cl_w // 2, cy - cr - 2), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (40, 200, 255), 1, cv2.LINE_AA)
@@ -80,47 +81,84 @@ class FrameAnnotator:
                 last_pt = (int(trail_pts[-1][0]), int(trail_pts[-1][1]))
                 cv2.circle(out, last_pt, 4, color, -1, lineType=cv2.LINE_AA)
 
-        # 4. Render Bounding Boxes and ID Tags
-        for t in tracks:
-            x1, y1, x2, y2 = map(int, t.last_bbox)
-            color = cls.get_status_color(t.status)
+        # 4. Render Tracking Boxes, Shapes, and ID Badges on Detected Entities
+        if show_boxes:
+            for t in tracks:
+                x1, y1, x2, y2 = map(int, t.last_bbox)
+                # Keep coordinates within frame boundaries
+                x1, y1 = max(0, x1), max(0, y1)
+                x2, y2 = min(w - 1, x2), min(h - 1, y2)
+                bw = max(2, x2 - x1)
+                bh = max(2, y2 - y1)
+                cx = (x1 + x2) // 2
+                cy = (y1 + y2) // 2
+                color = cls.get_status_color(t.status)
 
-            # Draw smooth bounding box with corner accents
-            cv2.rectangle(out, (x1, y1), (x2, y2), color, 2, lineType=cv2.LINE_AA)
-            corner_len = min(15, (x2 - x1) // 4, (y2 - y1) // 4)
-            if corner_len > 3:
-                # Top-left
-                cv2.line(out, (x1, y1), (x1 + corner_len, y1), color, 3, cv2.LINE_AA)
-                cv2.line(out, (x1, y1), (x1, y1 + corner_len), color, 3, cv2.LINE_AA)
-                # Bottom-right
-                cv2.line(out, (x2, y2), (x2 - corner_len, y2), color, 3, cv2.LINE_AA)
-                cv2.line(out, (x2, y2), (x2, y2 - corner_len), color, 3, cv2.LINE_AA)
+                # Render tracking shape according to selected shape style
+                if box_shape == "solid":
+                    # Full bounding box with corner accents
+                    cv2.rectangle(out, (x1, y1), (x2, y2), color, 2, lineType=cv2.LINE_AA)
+                    cv2.drawMarker(out, (cx, cy), color, cv2.MARKER_CROSS, markerSize=8, thickness=1, line_type=cv2.LINE_AA)
+                elif box_shape == "ellipse":
+                    # Smooth bounding ellipse surrounding entity contour
+                    ew = max(12, bw // 2)
+                    eh = max(12, bh // 2)
+                    cv2.ellipse(out, (cx, cy), (ew, eh), 0, 0, 360, color, 2, lineType=cv2.LINE_AA)
+                    cv2.drawMarker(out, (cx, cy), color, cv2.MARKER_CROSS, markerSize=8, thickness=1, line_type=cv2.LINE_AA)
+                elif box_shape == "reticle":
+                    # Target reticle circle around entity center with targeting crosshairs
+                    rad = max(14, min(bw, bh) // 2)
+                    cv2.circle(out, (cx, cy), rad, color, 2, lineType=cv2.LINE_AA)
+                    cv2.line(out, (cx - rad - 5, cy), (cx + rad + 5, cy), color, 1, cv2.LINE_AA)
+                    cv2.line(out, (cx, cy - rad - 5), (cx, cy + rad + 5), color, 1, cv2.LINE_AA)
+                    cv2.circle(out, (cx, cy), 3, color, -1, lineType=cv2.LINE_AA)
+                else:  # "corners" (default modern HUD style)
+                    # Thin box border with bold corner brackets
+                    cv2.rectangle(out, (x1, y1), (x2, y2), color, 1, lineType=cv2.LINE_AA)
+                    corner_len = min(20, max(8, bw // 4, bh // 4))
+                    if corner_len > 3:
+                        # Top-left corner
+                        cv2.line(out, (x1, y1), (x1 + corner_len, y1), color, 3, cv2.LINE_AA)
+                        cv2.line(out, (x1, y1), (x1, y1 + corner_len), color, 3, cv2.LINE_AA)
+                        # Top-right corner
+                        cv2.line(out, (x2, y1), (x2 - corner_len, y1), color, 3, cv2.LINE_AA)
+                        cv2.line(out, (x2, y1), (x2, y1 + corner_len), color, 3, cv2.LINE_AA)
+                        # Bottom-left corner
+                        cv2.line(out, (x1, y2), (x1 + corner_len, y2), color, 3, cv2.LINE_AA)
+                        cv2.line(out, (x1, y2), (x1, y2 - corner_len), color, 3, cv2.LINE_AA)
+                        # Bottom-right corner
+                        cv2.line(out, (x2, y2), (x2 - corner_len, y2), color, 3, cv2.LINE_AA)
+                        cv2.line(out, (x2, y2), (x2, y2 - corner_len), color, 3, cv2.LINE_AA)
+                    cv2.drawMarker(out, (cx, cy), color, cv2.MARKER_CROSS, markerSize=8, thickness=1, line_type=cv2.LINE_AA)
 
-            # Tag label: e.g. "#12 Duck [88]" or "#12 [88]"
-            spec_tag = f" {t.species.capitalize()}" if (t.species and t.species != "chicken") else ""
-            label = f"#{t.animal_id}{spec_tag} [{int(t.health_score)}]"
-            font = cv2.FONT_HERSHEY_SIMPLEX
-            font_scale = 0.45
-            thickness = 1
-            (tw, th), baseline = cv2.getTextSize(label, font, font_scale, thickness)
+                # Entity Track ID Tag: e.g. "ID: #12 [88]" or "ID: #12 Duck [88]"
+                spec_tag = f" {t.species.capitalize()}" if (t.species and t.species != "chicken") else ""
+                label = f"ID: #{t.animal_id}{spec_tag} [{int(t.health_score)}]"
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                font_scale = 0.44
+                thickness = 1
+                (tw, th), baseline = cv2.getTextSize(label, font, font_scale, thickness)
 
-            # Background label pill
-            pill_y1 = max(0, y1 - th - 8)
-            pill_y2 = y1
-            pill_x1 = x1
-            pill_x2 = x1 + tw + 10
+                # Position label directly above top-left of box
+                pill_y1 = max(45, y1 - th - 8)
+                pill_y2 = pill_y1 + th + 8
+                pill_x1 = max(0, x1)
+                pill_x2 = min(w - 1, pill_x1 + tw + 10)
 
-            cv2.rectangle(out, (pill_x1, pill_y1), (pill_x2, pill_y2), color, -1)
-            cv2.putText(
-                out,
-                label,
-                (pill_x1 + 5, pill_y2 - 4),
-                font,
-                font_scale,
-                COLOR_DARK if t.status == "watch" else COLOR_WHITE,
-                thickness,
-                lineType=cv2.LINE_AA,
-            )
+                # Pill background with solid status color
+                cv2.rectangle(out, (pill_x1, pill_y1), (pill_x2, pill_y2), color, -1)
+                # Subtle dark outline on pill
+                cv2.rectangle(out, (pill_x1, pill_y1), (pill_x2, pill_y2), COLOR_DARK, 1, lineType=cv2.LINE_AA)
+                cv2.putText(
+                    out,
+                    label,
+                    (pill_x1 + 5, pill_y2 - 5),
+                    font,
+                    font_scale,
+                    COLOR_DARK if t.status == "watch" else COLOR_WHITE,
+                    thickness,
+                    lineType=cv2.LINE_AA,
+                )
 
         # 5. Render HUD Header
         hud_h = 42

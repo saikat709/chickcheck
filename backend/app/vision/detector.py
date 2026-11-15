@@ -104,12 +104,14 @@ class LivestockDetector:
         if enhance_low_res and settings.ENHANCE_LOW_RES:
             input_frame, was_enhanced = self.enhancer.enhance(frame, target_inference_dim=imgsz)
 
-        # Adaptive Confidence Scaling for Low-Resolution frames:
-        # In low-res/small pixel conditions, lower confidence threshold captures faint silhouettes
+        # Adaptive Confidence Scaling:
+        # In poultry, low-res coops, or subtle contours, adaptively scale confidence threshold
         h, w = frame.shape[:2]
         effective_conf = conf
-        if settings.ADAPTIVE_CONF_SCALING and (h < settings.LOW_RES_MAX_DIM or w < 640):
-            effective_conf = min(conf, 0.12)
+        if settings.ADAPTIVE_CONF_SCALING:
+            is_poultry = any(sp in ["chicken", "duck", "bird"] for sp in settings.get_active_species_list())
+            if h < settings.LOW_RES_MAX_DIM or w < 640 or was_enhanced or is_poultry:
+                effective_conf = min(conf, 0.06)
 
         results = self.model.track(
             source=input_frame,

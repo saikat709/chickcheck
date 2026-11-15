@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Flame, Maximize2, RefreshCw, Shield, AlertTriangle, AlertOctagon, CheckCircle2, Sparkles, Users } from "lucide-react";
+import { Flame, Maximize2, RefreshCw, Shield, AlertTriangle, AlertOctagon, CheckCircle2, Sparkles, Users, Crosshair, Scan, Square, Circle } from "lucide-react";
 import { LiveStats } from "@/lib/api";
 
 interface HeroVideoPanelProps {
@@ -10,6 +10,8 @@ interface HeroVideoPanelProps {
 
 export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
   const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showBoxes, setShowBoxes] = useState(true);
+  const [boxShape, setBoxShape] = useState<"corners" | "solid" | "ellipse" | "reticle">("corners");
   const [streamError, setStreamError] = useState(false);
   const [streamNonce, setStreamNonce] = useState(Date.now());
 
@@ -43,7 +45,7 @@ export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
 
   const badge = getStatusBadge();
   const StatusIcon = badge.icon;
-  const streamUrl = `/api/stream/video?heatmap=${showHeatmap}&_t=${streamNonce}`;
+  const streamUrl = `/api/stream/video?heatmap=${showHeatmap}&show_boxes=${showBoxes}&box_shape=${boxShape}&_t=${streamNonce}`;
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
@@ -104,7 +106,59 @@ export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
         )}
 
         {/* Video Overlay Controls */}
-        <div className="absolute bottom-3 right-3 flex items-center gap-2">
+        <div className="absolute bottom-3 right-3 flex flex-wrap items-center gap-2">
+          {/* Tracking Boxes & ID Toggle */}
+          <button
+            onClick={() => {
+              setShowBoxes(!showBoxes);
+              setStreamNonce(Date.now());
+            }}
+            title="Toggle entity bounding boxes and tracking ID numbers"
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md flex items-center gap-1.5 transition-all shadow-md ${
+              showBoxes
+                ? "bg-emerald-600/90 text-white border border-emerald-400/40"
+                : "bg-slate-900/80 text-slate-300 hover:bg-slate-800 border border-white/10"
+            }`}
+          >
+            <Scan className="w-3.5 h-3.5" />
+            <span>Boxes & IDs {showBoxes ? "ON" : "OFF"}</span>
+          </button>
+
+          {/* Shape Style Selector */}
+          {showBoxes && (
+            <div className="flex items-center rounded-lg bg-slate-900/85 backdrop-blur-md border border-white/10 p-0.5 text-xs">
+              {(
+                [
+                  { id: "corners", label: "Corner HUD", icon: Scan },
+                  { id: "solid", label: "Solid Box", icon: Square },
+                  { id: "ellipse", label: "Ellipse", icon: Circle },
+                  { id: "reticle", label: "Reticle", icon: Crosshair },
+                ] as const
+              ).map((mode) => {
+                const Icon = mode.icon;
+                const isSelected = boxShape === mode.id;
+                return (
+                  <button
+                    key={mode.id}
+                    onClick={() => {
+                      setBoxShape(mode.id);
+                      setStreamNonce(Date.now());
+                    }}
+                    title={`Tracking shape: ${mode.label}`}
+                    className={`px-2 py-1 rounded flex items-center gap-1 font-medium transition-all ${
+                      isSelected
+                        ? "bg-slate-700 text-white shadow-sm font-semibold"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <Icon className="w-3 h-3" />
+                    <span className="hidden sm:inline">{mode.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Heatmap Toggle */}
           <button
             onClick={() => {
@@ -114,7 +168,7 @@ export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md flex items-center gap-1.5 transition-all shadow-md ${
               showHeatmap
                 ? "bg-amber-600 text-white"
-                : "bg-slate-900/80 text-slate-200 hover:bg-slate-800/90"
+                : "bg-slate-900/80 text-slate-200 hover:bg-slate-800/90 border border-white/10"
             }`}
           >
             <Flame className="w-3.5 h-3.5" />

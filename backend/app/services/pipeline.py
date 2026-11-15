@@ -60,6 +60,8 @@ class LivestockPipeline:
         self._latest_jpeg: Optional[bytes] = None
         self._show_heatmap_overlay: bool = False
         self._is_enhanced: bool = False
+        self._show_boxes: bool = True
+        self._box_shape: str = "corners"
 
         # Live stats cache
         self._latest_stats: Dict[str, Any] = {
@@ -285,6 +287,8 @@ class LivestockPipeline:
                     show_heatmap=self._show_heatmap_overlay,
                     was_enhanced=self._is_enhanced,
                     clusters=flock_metrics.get("clusters"),
+                    show_boxes=self._show_boxes,
+                    box_shape=self._box_shape,
                 )
 
                 # Encode JPEG for MJPEG stream
@@ -448,6 +452,12 @@ class LivestockPipeline:
         else:
             self._show_heatmap_overlay = not self._show_heatmap_overlay
         return self._show_heatmap_overlay
+
+    def set_annotation_style(self, show_boxes: Optional[bool] = None, box_shape: Optional[str] = None) -> None:
+        if show_boxes is not None:
+            self._show_boxes = show_boxes
+        if box_shape is not None:
+            self._box_shape = box_shape
 
 
 # Global pipeline singleton
