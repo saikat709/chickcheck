@@ -1,0 +1,59 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chickcheck-db
+    environment:
+      POSTGRES_DB: chickcheck
+      POSTGRES_USER: chickcheck
+      POSTGRES_PASSWORD: chickcheck_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chickcheck -d chickcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: chickcheck-backend
+    environment:
+      DATABASE_URL: postgresql://chickcheck:chickcheck_secret@postgres:5432/chickcheck
+      SPECIES: chicken
+      VIDEO_SOURCE: samples/dummy.mp4
+      PROCESS_EVERY_N: 2
+      INFER_IMGSZ: 640
+      CONF_THRESHOLD: 0.25
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./samples:/app/samples
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: chickcheck-frontend
+    environment:
+      NEXT_PUBLIC_BACKEND_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+
