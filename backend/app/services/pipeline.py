@@ -195,7 +195,6 @@ class LivestockPipeline:
                     for det in detections:
                         tid = det["id"]
                         bbox = det["bbox"]
-                        animal_bboxes[tid] = bbox
                         track = self.tracker_pool.update_track(
                             animal_id=tid,
                             timestamp=ts,
@@ -204,6 +203,7 @@ class LivestockPipeline:
                             species=det.get("species", settings.SPECIES),
                             frame=raw_frame,
                         )
+                        animal_bboxes[track.animal_id] = bbox
 
                         # Optional crop classification if classifier model is loaded
                         if self.detector.classifier is not None and (frame_counter % 10 == 0):

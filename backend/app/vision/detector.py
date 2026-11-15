@@ -46,7 +46,37 @@ class LivestockDetector:
             low_res_threshold_w=640,
         )
 
+        self._next_id: int = 1
+        self._ensure_poultry_tracker_config()
         self._configure_classes()
+
+    def _ensure_poultry_tracker_config(self) -> str:
+        """Ensures custom ByteTrack configuration for dense poultry flocks exists."""
+        tracker_path = os.path.join(os.path.dirname(__file__), "poultry_tracker.yaml")
+        if not os.path.exists(tracker_path):
+            import yaml
+            cfg = {
+                "tracker_type": "bytetrack",
+                "track_high_thresh": 0.05,
+                "track_low_thresh": 0.01,
+                "new_track_thresh": 0.03,
+                "track_buffer": 60,
+                "match_thresh": 0.7,
+                "fuse_score": True,
+            }
+            with open(tracker_path, "w") as f:
+                yaml.dump(cfg, f)
+        return tracker_path
+
+    def _alloc_id(self, existing_ids: Optional[List[int]] = None) -> int:
+        if existing_ids:
+            max_id = max([i for i in existing_ids if i > 0] + [0])
+            self._next_id = max(self._next_id, max_id + 1)
+        tid = self._next_id
+        self._next_id += 1
+        if self._next_id > 10000:
+            self._next_id = 1
+        return tid
 
     def _configure_classes(self) -> None:
         """Determines target class indices and maps them to species names."""
@@ -67,20 +97,31 @@ class LivestockDetector:
                 self.target_class_ids = None
         else:
             active_species = settings.get_active_species_list()
-            for sp in active_species:
-                profile = settings.get_species_profile(sp)
-                coco_name = profile.coco_class_name.lower()
-                if coco_name in model_names:
-                    cid = model_names[coco_name]
+            is_poultry = any(sp in ["chicken", "duck", "bird"] for sp in active_species)
+
+            if is_poultry:
+                # Top-down overhead chicks and broilers are frequently categorized by COCO models
+                # into visual proxies: 14 (bird), 18 (sheep/fluffy wool), 46 (banana/yellow curves),
+                # 77 (teddy bear/plush), 15 (cat), 16 (dog).
+                poultry_coco_proxies = [14, 18, 46, 77, 15, 16]
+                for cid in poultry_coco_proxies:
                     if cid not in self.target_class_ids:
                         self.target_class_ids.append(cid)
-                    # Associate class id with species
-                    self.class_id_to_species[cid] = sp
-                else:
-                    cid = profile.coco_class_id
-                    if cid not in self.target_class_ids:
-                        self.target_class_ids.append(cid)
-                    self.class_id_to_species[cid] = sp
+                    self.class_id_to_species[cid] = "chicken" if "chicken" in active_species else active_species[0]
+            else:
+                for sp in active_species:
+                    profile = settings.get_species_profile(sp)
+                    coco_name = profile.coco_class_name.lower()
+                    if coco_name in model_names:
+                        cid = model_names[coco_name]
+                        if cid not in self.target_class_ids:
+                            self.target_class_ids.append(cid)
+                        self.class_id_to_species[cid] = sp
+                    else:
+                        cid = profile.coco_class_id
+                        if cid not in self.target_class_ids:
+                            self.target_class_ids.append(cid)
+                        self.class_id_to_species[cid] = sp
 
         logger.info(f"Target detection class IDs for active species {settings.get_active_species_list()}: {self.target_class_ids}")
 
@@ -92,10 +133,7 @@ class LivestockDetector:
         enhance_low_res: bool = True,
     ) -> Tuple[List[Dict[str, Any]], bool]:
         """
-        Runs YOLO11 inference and ByteTrack persistence on the given frame.
-        Applies adaptive CLAHE / unsharp enhancement if low-resolution or degraded.
-        Returns:
-            Tuple of (detections_list, was_enhanced: bool)
+        Runs YOLO11 inference, plumage contour segmentation fusion, and ByteTrack persistence.
         """
         was_enhanced = False
         input_frame = frame
@@ -104,81 +142,124 @@ class LivestockDetector:
         if enhance_low_res and settings.ENHANCE_LOW_RES:
             input_frame, was_enhanced = self.enhancer.enhance(frame, target_inference_dim=imgsz)
 
-        # Adaptive Confidence Scaling:
-        # In poultry, low-res coops, or subtle contours, adaptively scale confidence threshold
-        # to ensure all chicks in the flock are detected without missing faint contours
         h, w = frame.shape[:2]
+        total_area = h * w
         effective_conf = conf
+        is_poultry = any(sp in ["chicken", "duck", "bird"] for sp in settings.get_active_species_list())
+
         if settings.ADAPTIVE_CONF_SCALING:
-            is_poultry = any(sp in ["chicken", "duck", "bird"] for sp in settings.get_active_species_list())
             if is_poultry:
-                effective_conf = min(conf, 0.025)
+                effective_conf = min(conf, 0.015)
             elif h < settings.LOW_RES_MAX_DIM or w < 640 or was_enhanced:
                 effective_conf = min(conf, 0.05)
+
+        tracker_config = self._ensure_poultry_tracker_config() if is_poultry else "bytetrack.yaml"
 
         results = self.model.track(
             source=input_frame,
             persist=True,
             imgsz=imgsz,
             conf=effective_conf,
+            iou=0.55 if is_poultry else 0.7,
             classes=self.target_class_ids,
-            tracker="bytetrack.yaml",
+            tracker=tracker_config,
             device=self.device,
             verbose=False,
         )
 
         detections = []
-        if not results or len(results) == 0:
-            return detections, was_enhanced
-
-        res = results[0]
-        boxes = res.boxes
-        if boxes is None or len(boxes) == 0:
-            return detections, was_enhanced
-
-        # If enhancement upscaled the image, calculate scale back to original frame
+        seen_boxes = []
         ih, iw = input_frame.shape[:2]
         scale_x = w / float(iw)
         scale_y = h / float(ih)
-
-        # Extract coordinates, IDs, confidences, and classes
-        xyxy = boxes.xyxy.cpu().numpy()
-        confs = boxes.conf.cpu().numpy()
-        cls_ids = boxes.cls.cpu().numpy().astype(int)
-
-        track_ids = None
-        if boxes.id is not None:
-            track_ids = boxes.id.cpu().numpy().astype(int)
-
         primary_species = settings.get_active_species_list()[0]
 
-        for i in range(len(xyxy)):
-            tid = int(track_ids[i]) if track_ids is not None else (i + 1)
-            raw_box = xyxy[i]
-            # Rescale back if enhancement upscaled input
-            if scale_x != 1.0 or scale_y != 1.0:
-                box = (
-                    float(raw_box[0] * scale_x),
-                    float(raw_box[1] * scale_y),
-                    float(raw_box[2] * scale_x),
-                    float(raw_box[3] * scale_y),
-                )
-            else:
-                box = tuple(map(float, raw_box))
+        if results and len(results) > 0 and results[0].boxes is not None:
+            boxes = results[0].boxes
+            xyxy = boxes.xyxy.cpu().numpy()
+            confs = boxes.conf.cpu().numpy()
+            cls_ids = boxes.cls.cpu().numpy().astype(int)
+            track_ids = boxes.id.cpu().numpy().astype(int) if boxes.id is not None else None
 
-            cid = int(cls_ids[i])
-            cname = self.model.names.get(cid, str(cid))
-            confidence = float(confs[i])
-            detected_species = self.class_id_to_species.get(cid, primary_species)
+            for i in range(len(xyxy)):
+                raw_box = xyxy[i]
+                if scale_x != 1.0 or scale_y != 1.0:
+                    box = (
+                        float(raw_box[0] * scale_x),
+                        float(raw_box[1] * scale_y),
+                        float(raw_box[2] * scale_x),
+                        float(raw_box[3] * scale_y),
+                    )
+                else:
+                    box = tuple(map(float, raw_box))
 
-            detections.append({
-                "id": tid,
-                "bbox": box,
-                "conf": confidence,
-                "class_id": cid,
-                "class_name": cname,
-                "species": detected_species,
-            })
+                bw = box[2] - box[0]
+                bh = box[3] - box[1]
+                area = bw * bh
+
+                # Discard giant background/feeder boxes (> 30% of entire frame) and tiny noise (< 16px)
+                if area > (0.30 * total_area) or bw < 16 or bh < 16:
+                    continue
+
+                tid = int(track_ids[i]) if (track_ids is not None and track_ids[i] > 0) else self._alloc_id()
+                cid = int(cls_ids[i])
+                cname = self.model.names.get(cid, str(cid))
+                confidence = float(confs[i])
+                detected_species = self.class_id_to_species.get(cid, primary_species)
+
+                detections.append({
+                    "id": tid,
+                    "bbox": box,
+                    "conf": confidence,
+                    "class_id": cid,
+                    "class_name": cname,
+                    "species": detected_species,
+                })
+                seen_boxes.append(box)
+
+        # 2. Morphological Plumage Fusion:
+        # Detects subtle, occluded, or touching chicks (especially around the central feeder)
+        # where CNN receptive fields merge adjacent birds.
+        if is_poultry:
+            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+            # High value/luminance, low to moderate saturation matches broiler plumage against dirt bedding
+            mask = cv2.inRange(hsv, np.array([0, 0, 130]), np.array([180, 110, 255]))
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+            opened = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+            contours, _ = cv2.findContours(opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            for c in contours:
+                c_area = cv2.contourArea(c)
+                if 700 < c_area < (0.25 * total_area):
+                    bx, by, bw, bh = cv2.boundingRect(c)
+                    if 0.3 < (bw / max(1, bh)) < 3.0:
+                        blob_box = (float(bx), float(by), float(bx + bw), float(by + bh))
+                        # Check IoU overlap with all existing detected boxes
+                        overlapped = False
+                        for sb in seen_boxes:
+                            inter_x1 = max(blob_box[0], sb[0])
+                            inter_y1 = max(blob_box[1], sb[1])
+                            inter_x2 = min(blob_box[2], sb[2])
+                            inter_y2 = min(blob_box[3], sb[3])
+                            inter = max(0.0, inter_x2 - inter_x1) * max(0.0, inter_y2 - inter_y1)
+                            a1 = (blob_box[2] - blob_box[0]) * (blob_box[3] - blob_box[1])
+                            a2 = (sb[2] - sb[0]) * (sb[3] - sb[1])
+                            iou = inter / max(1e-6, a1 + a2 - inter)
+                            if iou > 0.25:
+                                overlapped = True
+                                break
+                        if not overlapped:
+                            existing_ids = [d["id"] for d in detections]
+                            tid = self._alloc_id(existing_ids)
+                            detections.append({
+                                "id": tid,
+                                "bbox": blob_box,
+                                "conf": 0.40,
+                                "class_id": 14,
+                                "class_name": "chick",
+                                "species": primary_species,
+                            })
+                            seen_boxes.append(blob_box)
 
         return detections, was_enhanced
 

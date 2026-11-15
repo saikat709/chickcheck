@@ -237,23 +237,38 @@ class TrackerPool:
             track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=img)
             self.tracks[animal_id] = track
         else:
-            # Check if this new detection strongly matches a recently retired track by spatial proximity & appearance
-            matched_retired_id = None
-            if self.retired_tracks and img is not None:
-                cx = (bbox[0] + bbox[2]) / 2.0
-                cy = (bbox[1] + bbox[3]) / 2.0
-                diag = math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])
+            # Check if this new detection strongly matches an un-updated active track or recently retired track
+            matched_id = None
+            cx = (bbox[0] + bbox[2]) / 2.0
+            cy = (bbox[1] + bbox[3]) / 2.0
+            diag = math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])
+
+            # 1. Match un-updated active tracks (recovers single-frame tracking dropouts)
+            for act_id, act_track in self.tracks.items():
+                if act_track.last_seen < timestamp and act_track.species == species:
+                    dist = math.hypot(cx - act_track.last_centroid[0], cy - act_track.last_centroid[1])
+                    if dist < 1.0 * max(diag, act_track.last_diag):
+                        matched_id = act_id
+                        break
+
+            if matched_id is not None:
+                track = self.tracks[matched_id]
+                track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=img)
+                return track
+
+            # 2. Match recently retired tracks
+            if self.retired_tracks:
                 for ret_id, ret_track in self.retired_tracks.items():
                     if ret_track.species == species and (timestamp - ret_track.last_seen) < 3.0:
                         dist = math.hypot(cx - ret_track.last_centroid[0], cy - ret_track.last_centroid[1])
                         if dist < 1.5 * max(diag, ret_track.last_diag):
-                            matched_retired_id = ret_id
+                            matched_id = ret_id
                             break
 
-            if matched_retired_id is not None:
-                track = self.retired_tracks.pop(matched_retired_id)
+            if matched_id is not None:
+                track = self.retired_tracks.pop(matched_id)
                 track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=img)
-                self.tracks[matched_retired_id] = track
+                self.tracks[matched_id] = track
             else:
                 track = AnimalTrackState(animal_id, timestamp, bbox, species=species)
                 track.trail = deque(maxlen=self.max_trail_points)
