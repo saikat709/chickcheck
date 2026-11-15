@@ -2,6 +2,8 @@
 
 **ChickCheck** is an end-to-end computer-vision and kinematic behavioral monitoring platform for livestock. Built with **FastAPI**, **Ultralytics YOLO11 + ByteTrack**, and **Next.js 14**, ChickCheck continuously analyzes video feeds to detect animals, assign persistent tracking IDs, calculate real-time kinematics, evaluate 10 biological anomaly screening rules, stream live annotated MJPEG video and SSE event feeds, and dispatch alerts to farm owners across Telegram, Webhook, and SMTP Email.
 
+![ChickCheck Live Dashboard](samples/homepage.png)
+
 > ⚠️ **Clinical Disclaimer**: ChickCheck provides an automated, movement-based behavioral screening signal only. It is **not** a clinical veterinary diagnosis or a replacement for professional animal care inspection.
 
 ---
