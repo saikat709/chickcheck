@@ -225,19 +225,21 @@ class TrackerPool:
         idle_speed_threshold_norm: float = 0.05,
         species: str = "chicken",
         frame_bgr: Optional[np.ndarray] = None,
+        frame: Optional[np.ndarray] = None,
     ) -> AnimalTrackState:
+        img = frame if frame is not None else frame_bgr
         if animal_id in self.tracks:
             track = self.tracks[animal_id]
-            track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=frame_bgr)
+            track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=img)
         elif animal_id in self.retired_tracks:
             # Re-appearance of a previously retired track
             track = self.retired_tracks.pop(animal_id)
-            track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=frame_bgr)
+            track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=img)
             self.tracks[animal_id] = track
         else:
             # Check if this new detection strongly matches a recently retired track by spatial proximity & appearance
             matched_retired_id = None
-            if self.retired_tracks and frame_bgr is not None:
+            if self.retired_tracks and img is not None:
                 cx = (bbox[0] + bbox[2]) / 2.0
                 cy = (bbox[1] + bbox[3]) / 2.0
                 diag = math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])
@@ -250,14 +252,14 @@ class TrackerPool:
 
             if matched_retired_id is not None:
                 track = self.retired_tracks.pop(matched_retired_id)
-                track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=frame_bgr)
+                track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=img)
                 self.tracks[matched_retired_id] = track
             else:
                 track = AnimalTrackState(animal_id, timestamp, bbox, species=species)
                 track.trail = deque(maxlen=self.max_trail_points)
                 track.trail.append(((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0))
-                if frame_bgr is not None:
-                    track.update_appearance(frame_bgr, bbox)
+                if img is not None:
+                    track.update_appearance(img, bbox)
                 self.tracks[animal_id] = track
 
         return track
