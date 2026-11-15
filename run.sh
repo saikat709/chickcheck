@@ -52,15 +52,34 @@ fi
 
 # 6. Cleanup handler for graceful shutdown
 cleanup() {
+    # Immediately disable traps to avoid multiple Ctrl+C re-triggering this handler
+    trap - SIGINT SIGTERM EXIT
     echo ""
     echo "Shutting down ChickCheck backend and frontend services..."
-    if [ -n "$BACKEND_PID" ]; then
-        kill "$BACKEND_PID" 2>/dev/null || true
-    fi
+
+    # Send SIGTERM to backend and frontend processes and ports
     if [ -n "$FRONTEND_PID" ]; then
-        kill "$FRONTEND_PID" 2>/dev/null || true
+        kill -TERM "$FRONTEND_PID" 2>/dev/null || true
     fi
-    wait
+    if [ -n "$BACKEND_PID" ]; then
+        kill -TERM "$BACKEND_PID" 2>/dev/null || true
+    fi
+    fuser -k -TERM "${BACKEND_PORT}/tcp" 2>/dev/null || true
+    fuser -k -TERM "3000/tcp" 2>/dev/null || true
+
+    # Brief grace period (0.5s)
+    sleep 0.5
+
+    # Force kill any remaining processes on ports or by PID
+    if [ -n "$FRONTEND_PID" ] && kill -0 "$FRONTEND_PID" 2>/dev/null; then
+        kill -9 "$FRONTEND_PID" 2>/dev/null || true
+    fi
+    if [ -n "$BACKEND_PID" ] && kill -0 "$BACKEND_PID" 2>/dev/null; then
+        kill -9 "$BACKEND_PID" 2>/dev/null || true
+    fi
+    fuser -k -9 "${BACKEND_PORT}/tcp" 2>/dev/null || true
+    fuser -k -9 "3000/tcp" 2>/dev/null || true
+
     echo "All services stopped."
     exit 0
 }
@@ -70,7 +89,7 @@ trap cleanup SIGINT SIGTERM EXIT
 # 7. Start Backend
 BACKEND_PORT="${PORT:-8001}"
 echo "Starting Backend API server on http://127.0.0.1:${BACKEND_PORT}..."
-.venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port "${BACKEND_PORT}" --reload --reload-dir backend/app &
+.venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port "${BACKEND_PORT}" --reload --reload-dir backend/app --timeout-graceful-shutdown 1 &
 BACKEND_PID=$!
 
 # Wait briefly for backend to initialize
@@ -78,7 +97,7 @@ sleep 2
 
 # 8. Start Frontend
 echo "Starting Next.js Frontend on http://127.0.0.1:3000..."
-(cd frontend && npm run dev) &
+npm --prefix frontend run dev &
 FRONTEND_PID=$!
 
 echo ""

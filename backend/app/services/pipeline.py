@@ -129,8 +129,13 @@ class LivestockPipeline:
         """Gracefully halts pipeline, releases video sources, and flushes resources."""
         logger.info("Stopping Livestock Pipeline...")
         self.running = False
+        try:
+            self._broadcast_sse("shutdown", {"status": "stopped"})
+        except Exception:
+            pass
+
         if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=3.0)
+            self._thread.join(timeout=2.0)
 
         if self.source:
             try:

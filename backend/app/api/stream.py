@@ -30,7 +30,7 @@ def get_video_stream(
 
     def frame_generator():
         last_frame = None
-        while True:
+        while pipeline.running:
             jpg_bytes = pipeline.get_latest_jpeg()
             if jpg_bytes is not None and jpg_bytes != last_frame:
                 last_frame = jpg_bytes
@@ -62,12 +62,14 @@ async def get_events_sse(request: Request):
             init_stats = pipeline.get_latest_stats()
             yield f"event: connected\ndata: {json.dumps(init_stats)}\n\n"
 
-            while True:
+            while pipeline.running:
                 if await request.is_disconnected():
                     break
 
                 try:
-                    msg = await asyncio.wait_for(client_queue.get(), timeout=15.0)
+                    msg = await asyncio.wait_for(client_queue.get(), timeout=2.0)
+                    if msg.get("type") == "shutdown":
+                        break
                     evt_type = msg.get("type", "message")
                     data_str = json.dumps(msg.get("data", {}))
                     yield f"event: {evt_type}\ndata: {data_str}\n\n"
