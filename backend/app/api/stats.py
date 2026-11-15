@@ -21,7 +21,7 @@ def get_live_stats():
 
 @router.get("/history", response_model=HistoryResponse)
 def get_historical_stats(
-    range: str = Query("1h", regex="^(1h|24h|7d)$"),
+    range: str = Query("1h", pattern="^(1h|24h|7d)$"),
     db: Session = Depends(get_db),
 ):
     """

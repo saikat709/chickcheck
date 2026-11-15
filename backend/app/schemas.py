@@ -1,9 +1,11 @@
 import datetime
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class AnimalTrackResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     animal_id: int
     species: str
     first_seen: datetime.datetime
@@ -14,9 +16,6 @@ class AnimalTrackResponse(BaseModel):
     total_idle_seconds: float
     last_speed_norm: float
     active: bool
-
-    class Config:
-        from_attributes = True
 
 
 class AnimalDetailResponse(AnimalTrackResponse):
@@ -59,6 +58,8 @@ class HistoryResponse(BaseModel):
 
 
 class AlertEventResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     event_id: str
     timestamp: datetime.datetime
@@ -73,9 +74,6 @@ class AlertEventResponse(BaseModel):
     clip_path: Optional[str]
     acknowledged: bool
     acknowledged_at: Optional[datetime.datetime]
-
-    class Config:
-        from_attributes = True
 
 
 class ConfigResponse(BaseModel):

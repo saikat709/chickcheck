@@ -6,7 +6,7 @@ router = APIRouter(prefix="/api/heatmap", tags=["heatmap"])
 
 
 @router.get("")
-def get_heatmap(format: str = Query("png", regex="^(png|json)$")):
+def get_heatmap(format: str = Query("png", pattern="^(png|json)$")):
     """
     Returns rolling livestock spatial density either as a PNG color map or 2D JSON grid.
     """

@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 @router.get("/daily")
 def get_daily_report(
     date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format"),
-    format: str = Query("json", regex="^(json|pdf)$"),
+    format: str = Query("json", pattern="^(json|pdf)$"),
     db: Session = Depends(get_db),
 ):
     """
