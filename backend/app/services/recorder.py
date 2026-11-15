@@ -23,6 +23,7 @@ class VideoClipRecorder:
         self.lock = Lock()
         self.buffer: deque = deque()
         self._fps: float = 25.0
+        self._recent_clips: Dict[str, Tuple[float, str]] = {}
 
     def add_frame(self, frame: np.ndarray, timestamp: float, fps: float = 25.0) -> None:
         if frame is None:
@@ -74,8 +75,14 @@ class VideoClipRecorder:
         and writes an MP4 file.
         Returns the relative path to the saved clip.
         """
+        now = time.time()
+        # Throttling: if a clip with this prefix was recorded in the last 6.0 seconds, reuse it
+        recent = self._recent_clips.get(filename_prefix)
+        if recent and (now - recent[0]) < 6.0:
+            return recent[1]
+
         os.makedirs(settings.CLIPS_DIR, exist_ok=True)
-        filename = f"{filename_prefix}_{int(time.time() * 1000)}.mp4"
+        filename = f"{filename_prefix}_{int(now * 1000)}.mp4"
         full_path = os.path.join(settings.CLIPS_DIR, filename)
 
         with self.lock:
@@ -117,8 +124,10 @@ class VideoClipRecorder:
             writer.write(frm)
 
         writer.release()
+        clip_rel = f"clips/{filename}"
+        self._recent_clips[filename_prefix] = (now, clip_rel)
         logger.info(f"Recorded incident video clip: {full_path} ({len(selected_frames)} frames)")
-        return f"clips/{filename}"
+        return clip_rel
 
     @classmethod
     def cleanup_retention(cls, retention_days: int = 7) -> int:

@@ -426,14 +426,11 @@ class LivestockPipeline:
 
     def _broadcast_sse(self, event_type: str, data: Dict[str, Any]) -> None:
         if self._loop and self._loop.is_running():
-            asyncio.run_coroutine_threadsafe(
-                self._broadcast_sse_coro(event_type, data),
-                self._loop,
-            )
+            msg = {"type": event_type, "data": data}
+            self._loop.call_soon_threadsafe(self._put_sse_msg, msg)
 
-    async def _broadcast_sse_coro(self, event_type: str, data: Dict[str, Any]) -> None:
+    def _put_sse_msg(self, msg: Dict[str, Any]) -> None:
         dead_queues = set()
-        msg = {"type": event_type, "data": data}
         for q in list(self._sse_clients):
             try:
                 q.put_nowait(msg)
@@ -441,6 +438,9 @@ class LivestockPipeline:
                 dead_queues.add(q)
         for dq in dead_queues:
             self._sse_clients.discard(dq)
+
+    async def _broadcast_sse_coro(self, event_type: str, data: Dict[str, Any]) -> None:
+        self._put_sse_msg({"type": event_type, "data": data})
 
     def subscribe_sse(self) -> asyncio.Queue:
         q: asyncio.Queue = asyncio.Queue(maxsize=100)

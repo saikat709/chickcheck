@@ -1,6 +1,7 @@
 import os
 import uuid
 import datetime
+import asyncio
 import logging
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
@@ -74,30 +75,32 @@ class AlertEngine:
             event_id = str(uuid.uuid4())
             ts = datetime.datetime.utcnow()
 
-            # 1. Capture snapshot image
+            # 1. Capture snapshot image (offloaded to thread to keep event loop free)
             highlight_bbox = animal_bboxes.get(f.animal_id) if f.animal_id is not None else None
             snapshot_rel_path = None
             snapshot_bytes = None
             try:
-                snapshot_rel_path, snapshot_bytes = self.recorder.save_snapshot(
+                snapshot_rel_path, snapshot_bytes = await asyncio.to_thread(
+                    self.recorder.save_snapshot,
                     current_frame,
-                    filename_prefix=f"{f.rule_name}_{f.animal_id or 'flock'}",
-                    highlight_bbox=highlight_bbox,
+                    f"{f.rule_name}_{f.animal_id or 'flock'}",
+                    highlight_bbox,
                 )
             except Exception as e:
                 logger.error(f"Error capturing alert snapshot: {e}")
 
-            # 2. Extract 10-second video clip
+            # 2. Extract video clip (offloaded to thread)
             clip_rel_path = None
             try:
-                clip_rel_path = self.recorder.export_clip(
-                    filename_prefix=f"alert_{f.rule_name}",
-                    clip_duration_s=10.0,
+                clip_rel_path = await asyncio.to_thread(
+                    self.recorder.export_clip,
+                    f"alert_{f.rule_name}",
+                    10.0,
                 )
             except Exception as e:
                 logger.error(f"Error capturing alert video clip: {e}")
 
-            # 3. Persist Alert to Database
+            # 3. Persist Alert to Database (offloaded to thread)
             rec = AlertEventRecord(
                 event_id=event_id,
                 timestamp=ts,
@@ -112,13 +115,16 @@ class AlertEngine:
                 clip_path=clip_rel_path,
                 acknowledged=False,
             )
-            try:
-                db.add(rec)
-                db.commit()
-                db.refresh(rec)
-            except Exception as e:
-                db.rollback()
-                logger.error(f"Failed to save alert event to DB: {e}")
+            def _save_db():
+                try:
+                    db.add(rec)
+                    db.commit()
+                    db.refresh(rec)
+                except Exception as e:
+                    db.rollback()
+                    logger.error(f"Failed to save alert event to DB: {e}")
+
+            await asyncio.to_thread(_save_db)
 
             event_data = {
                 "id": rec.id if hasattr(rec, "id") and rec.id else 0,
