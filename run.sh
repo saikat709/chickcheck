@@ -70,7 +70,7 @@ trap cleanup SIGINT SIGTERM EXIT
 # 7. Start Backend
 BACKEND_PORT="${PORT:-8001}"
 echo "Starting Backend API server on http://127.0.0.1:${BACKEND_PORT}..."
-.venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port "${BACKEND_PORT}" &
+.venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port "${BACKEND_PORT}" --reload --reload-dir backend/app &
 BACKEND_PID=$!
 
 # Wait briefly for backend to initialize

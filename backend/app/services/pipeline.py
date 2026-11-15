@@ -1,5 +1,6 @@
 import os
 import time
+import datetime
 import asyncio
 import threading
 import logging
@@ -357,14 +358,15 @@ class LivestockPipeline:
                 db.add(fm)
 
                 # Update or insert tracked animals
+                now_dt = datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
                 for t in tracks:
                     rec = db.query(AnimalTrack).filter(AnimalTrack.animal_id == t.animal_id).first()
                     if not rec:
                         rec = AnimalTrack(
                             animal_id=t.animal_id,
-                            species=settings.SPECIES,
-                            first_seen=time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(t.first_seen)),
-                            last_seen=time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(t.last_seen)),
+                            species=t.species or settings.SPECIES,
+                            first_seen=now_dt,
+                            last_seen=now_dt,
                             status=t.status,
                             health_score=t.health_score,
                             total_distance_px=t.total_distance_px,
@@ -374,7 +376,8 @@ class LivestockPipeline:
                         )
                         db.add(rec)
                     else:
-                        rec.last_seen = time.strftime('%Y-%m-%d %H:%M:%S', time.gmtime(t.last_seen))
+                        rec.last_seen = now_dt
+                        rec.species = t.species or rec.species
                         rec.status = t.status
                         rec.health_score = t.health_score
                         rec.total_distance_px = t.total_distance_px
