@@ -106,12 +106,15 @@ class LivestockDetector:
 
         # Adaptive Confidence Scaling:
         # In poultry, low-res coops, or subtle contours, adaptively scale confidence threshold
+        # to ensure all chicks in the flock are detected without missing faint contours
         h, w = frame.shape[:2]
         effective_conf = conf
         if settings.ADAPTIVE_CONF_SCALING:
             is_poultry = any(sp in ["chicken", "duck", "bird"] for sp in settings.get_active_species_list())
-            if h < settings.LOW_RES_MAX_DIM or w < 640 or was_enhanced or is_poultry:
-                effective_conf = min(conf, 0.06)
+            if is_poultry:
+                effective_conf = min(conf, 0.025)
+            elif h < settings.LOW_RES_MAX_DIM or w < 640 or was_enhanced:
+                effective_conf = min(conf, 0.05)
 
         results = self.model.track(
             source=input_frame,

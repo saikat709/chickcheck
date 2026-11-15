@@ -41,7 +41,9 @@ class FrameAnnotator:
         was_enhanced: bool = False,
         clusters: Optional[List[Dict[str, Any]]] = None,
         show_boxes: bool = True,
-        box_shape: str = "corners",
+        show_trails: bool = False,
+        show_clusters: bool = False,
+        box_shape: str = "box",
     ) -> np.ndarray:
         out = frame.copy()
         h, w = out.shape[:2]
@@ -52,8 +54,8 @@ class FrameAnnotator:
             mask_norm = (mask.astype(float) / 255.0)[:, :, None]
             out = (out * (1.0 - 0.45 * mask_norm) + heat_rgb * (0.45 * mask_norm)).astype(np.uint8)
 
-        # 2. Render Spatial Clusters / Huddles (in dense crowd scenarios)
-        if clusters:
+        # 2. Render Spatial Clusters (only if explicitly enabled)
+        if show_clusters and clusters:
             for cl in clusters:
                 if cl.get("size", cl.get("count", 0)) >= 3:
                     cx, cy = int(cl["centroid"][0]), int(cl["centroid"][1])
@@ -64,90 +66,54 @@ class FrameAnnotator:
                     cv2.rectangle(out, (cx - cl_w // 2 - 4, cy - cr - cl_h - 4), (cx + cl_w // 2 + 4, cy - cr), (24, 24, 27), -1)
                     cv2.putText(out, cl_label, (cx - cl_w // 2, cy - cr - 2), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (40, 200, 255), 1, cv2.LINE_AA)
 
-        # 3. Render Motion Trails (drawn behind boxes)
-        for t in tracks:
-            trail_pts = list(t.trail)
-            color = cls.get_status_color(t.status)
-            n_pts = len(trail_pts)
-            for idx in range(1, n_pts):
-                p1 = (int(trail_pts[idx - 1][0]), int(trail_pts[idx - 1][1]))
-                p2 = (int(trail_pts[idx][0]), int(trail_pts[idx][1]))
-                alpha = idx / float(n_pts)
-                thickness = max(1, int(3 * alpha))
-                cv2.line(out, p1, p2, color, thickness, lineType=cv2.LINE_AA)
+        # 3. Render Motion Trails (only if explicitly enabled)
+        if show_trails:
+            for t in tracks:
+                trail_pts = list(t.trail)
+                color = cls.get_status_color(t.status)
+                n_pts = len(trail_pts)
+                for idx in range(1, n_pts):
+                    p1 = (int(trail_pts[idx - 1][0]), int(trail_pts[idx - 1][1]))
+                    p2 = (int(trail_pts[idx][0]), int(trail_pts[idx][1]))
+                    alpha = idx / float(n_pts)
+                    thickness = max(1, int(2 * alpha))
+                    cv2.line(out, p1, p2, color, thickness, lineType=cv2.LINE_AA)
 
-            # Dot at current centroid
-            if trail_pts:
-                last_pt = (int(trail_pts[-1][0]), int(trail_pts[-1][1]))
-                cv2.circle(out, last_pt, 4, color, -1, lineType=cv2.LINE_AA)
-
-        # 4. Render Tracking Boxes, Shapes, and ID Badges on Detected Entities
+        # 4. Render Clean Bounding Boxes and ID Tags on Chicks (without cluttering lines)
         if show_boxes:
             for t in tracks:
                 x1, y1, x2, y2 = map(int, t.last_bbox)
-                # Keep coordinates within frame boundaries
                 x1, y1 = max(0, x1), max(0, y1)
                 x2, y2 = min(w - 1, x2), min(h - 1, y2)
                 bw = max(2, x2 - x1)
                 bh = max(2, y2 - y1)
-                cx = (x1 + x2) // 2
-                cy = (y1 + y2) // 2
                 color = cls.get_status_color(t.status)
 
-                # Render tracking shape according to selected shape style
-                if box_shape == "solid":
-                    # Full bounding box with corner accents
-                    cv2.rectangle(out, (x1, y1), (x2, y2), color, 2, lineType=cv2.LINE_AA)
-                    cv2.drawMarker(out, (cx, cy), color, cv2.MARKER_CROSS, markerSize=8, thickness=1, line_type=cv2.LINE_AA)
-                elif box_shape == "ellipse":
-                    # Smooth bounding ellipse surrounding entity contour
-                    ew = max(12, bw // 2)
-                    eh = max(12, bh // 2)
+                if box_shape == "ellipse":
+                    cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
+                    ew, eh = max(12, bw // 2), max(12, bh // 2)
                     cv2.ellipse(out, (cx, cy), (ew, eh), 0, 0, 360, color, 2, lineType=cv2.LINE_AA)
-                    cv2.drawMarker(out, (cx, cy), color, cv2.MARKER_CROSS, markerSize=8, thickness=1, line_type=cv2.LINE_AA)
-                elif box_shape == "reticle":
-                    # Target reticle circle around entity center with targeting crosshairs
-                    rad = max(14, min(bw, bh) // 2)
-                    cv2.circle(out, (cx, cy), rad, color, 2, lineType=cv2.LINE_AA)
-                    cv2.line(out, (cx - rad - 5, cy), (cx + rad + 5, cy), color, 1, cv2.LINE_AA)
-                    cv2.line(out, (cx, cy - rad - 5), (cx, cy + rad + 5), color, 1, cv2.LINE_AA)
-                    cv2.circle(out, (cx, cy), 3, color, -1, lineType=cv2.LINE_AA)
-                else:  # "corners" (default modern HUD style)
-                    # Thin box border with bold corner brackets
-                    cv2.rectangle(out, (x1, y1), (x2, y2), color, 1, lineType=cv2.LINE_AA)
-                    corner_len = min(20, max(8, bw // 4, bh // 4))
-                    if corner_len > 3:
-                        # Top-left corner
-                        cv2.line(out, (x1, y1), (x1 + corner_len, y1), color, 3, cv2.LINE_AA)
-                        cv2.line(out, (x1, y1), (x1, y1 + corner_len), color, 3, cv2.LINE_AA)
-                        # Top-right corner
-                        cv2.line(out, (x2, y1), (x2 - corner_len, y1), color, 3, cv2.LINE_AA)
-                        cv2.line(out, (x2, y1), (x2, y1 + corner_len), color, 3, cv2.LINE_AA)
-                        # Bottom-left corner
-                        cv2.line(out, (x1, y2), (x1 + corner_len, y2), color, 3, cv2.LINE_AA)
-                        cv2.line(out, (x1, y2), (x1, y2 - corner_len), color, 3, cv2.LINE_AA)
-                        # Bottom-right corner
-                        cv2.line(out, (x2, y2), (x2 - corner_len, y2), color, 3, cv2.LINE_AA)
-                        cv2.line(out, (x2, y2), (x2, y2 - corner_len), color, 3, cv2.LINE_AA)
-                    cv2.drawMarker(out, (cx, cy), color, cv2.MARKER_CROSS, markerSize=8, thickness=1, line_type=cv2.LINE_AA)
+                else:
+                    # Clean, solid bounding box framing the chick
+                    cv2.rectangle(out, (x1, y1), (x2, y2), color, 2, lineType=cv2.LINE_AA)
 
-                # Entity Track ID Tag: e.g. "ID: #12 [88]" or "ID: #12 Duck [88]"
-                spec_tag = f" {t.species.capitalize()}" if (t.species and t.species != "chicken") else ""
-                label = f"ID: #{t.animal_id}{spec_tag} [{int(t.health_score)}]"
+                # Entity Track ID Tag Pill (e.g. "#1" or "#1 [95]")
+                label = f"#{t.animal_id}"
                 font = cv2.FONT_HERSHEY_SIMPLEX
-                font_scale = 0.44
+                font_scale = 0.45
                 thickness = 1
                 (tw, th), baseline = cv2.getTextSize(label, font, font_scale, thickness)
 
-                # Position label directly above top-left of box
-                pill_y1 = max(45, y1 - th - 8)
-                pill_y2 = pill_y1 + th + 8
+                # Position label above chick box
+                pill_h = th + 8
+                pill_w = tw + 10
+                pill_y1 = max(45, y1 - pill_h)
+                pill_y2 = pill_y1 + pill_h
                 pill_x1 = max(0, x1)
-                pill_x2 = min(w - 1, pill_x1 + tw + 10)
+                pill_x2 = min(w - 1, pill_x1 + pill_w)
 
-                # Pill background with solid status color
+                # Pill background in status color with dark border
                 cv2.rectangle(out, (pill_x1, pill_y1), (pill_x2, pill_y2), color, -1)
-                # Subtle dark outline on pill
                 cv2.rectangle(out, (pill_x1, pill_y1), (pill_x2, pill_y2), COLOR_DARK, 1, lineType=cv2.LINE_AA)
                 cv2.putText(
                     out,

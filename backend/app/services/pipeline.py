@@ -62,7 +62,9 @@ class LivestockPipeline:
         self._show_heatmap_overlay: bool = False
         self._is_enhanced: bool = False
         self._show_boxes: bool = True
-        self._box_shape: str = "corners"
+        self._show_trails: bool = False
+        self._show_clusters: bool = False
+        self._box_shape: str = "box"
 
         # Live stats cache
         self._latest_stats: Dict[str, Any] = {
@@ -289,6 +291,8 @@ class LivestockPipeline:
                     was_enhanced=self._is_enhanced,
                     clusters=flock_metrics.get("clusters"),
                     show_boxes=self._show_boxes,
+                    show_trails=self._show_trails,
+                    show_clusters=self._show_clusters,
                     box_shape=self._box_shape,
                 )
 
@@ -456,11 +460,21 @@ class LivestockPipeline:
             self._show_heatmap_overlay = not self._show_heatmap_overlay
         return self._show_heatmap_overlay
 
-    def set_annotation_style(self, show_boxes: Optional[bool] = None, box_shape: Optional[str] = None) -> None:
+    def set_annotation_style(
+        self,
+        show_boxes: Optional[bool] = None,
+        box_shape: Optional[str] = None,
+        show_trails: Optional[bool] = None,
+        show_clusters: Optional[bool] = None,
+    ) -> None:
         if show_boxes is not None:
             self._show_boxes = show_boxes
         if box_shape is not None:
             self._box_shape = box_shape
+        if show_trails is not None:
+            self._show_trails = show_trails
+        if show_clusters is not None:
+            self._show_clusters = show_clusters
 
 
 # Global pipeline singleton

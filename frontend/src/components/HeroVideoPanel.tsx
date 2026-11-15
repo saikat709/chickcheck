@@ -11,7 +11,7 @@ interface HeroVideoPanelProps {
 export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
   const [showHeatmap, setShowHeatmap] = useState(false);
   const [showBoxes, setShowBoxes] = useState(true);
-  const [boxShape, setBoxShape] = useState<"corners" | "solid" | "ellipse" | "reticle">("corners");
+  const [boxShape, setBoxShape] = useState<"box" | "ellipse">("box");
   const [streamError, setStreamError] = useState(false);
   const [streamNonce, setStreamNonce] = useState(Date.now());
 
@@ -120,7 +120,7 @@ export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
                 : "bg-slate-900/80 text-slate-300 hover:bg-slate-800 border border-white/10"
             }`}
           >
-            <Scan className="w-3.5 h-3.5" />
+            <Square className="w-3.5 h-3.5" />
             <span>Boxes & IDs {showBoxes ? "ON" : "OFF"}</span>
           </button>
 
@@ -129,10 +129,8 @@ export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
             <div className="flex items-center rounded-lg bg-slate-900/85 backdrop-blur-md border border-white/10 p-0.5 text-xs">
               {(
                 [
-                  { id: "corners", label: "Corner HUD", icon: Scan },
-                  { id: "solid", label: "Solid Box", icon: Square },
+                  { id: "box", label: "Box", icon: Square },
                   { id: "ellipse", label: "Ellipse", icon: Circle },
-                  { id: "reticle", label: "Reticle", icon: Crosshair },
                 ] as const
               ).map((mode) => {
                 const Icon = mode.icon;
