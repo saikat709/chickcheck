@@ -39,3 +39,4 @@ data/reports/*
 .DS_Store
 Thumbs.db
 
+data/bytetrack_chickcheck.yaml

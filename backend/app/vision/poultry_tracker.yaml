@@ -1,7 +1,9 @@
-fuse_score: true
-match_thresh: 0.7
-new_track_thresh: 0.03
-track_buffer: 60
-track_high_thresh: 0.05
-track_low_thresh: 0.01
+# ByteTrack template. LivestockDetector copies this and overrides the three
+# thresholds below from CONF_THRESHOLD / ADAPTIVE_CONF_FLOOR at start-up.
 tracker_type: bytetrack
+track_high_thresh: 0.10
+track_low_thresh: 0.05
+new_track_thresh: 0.10
+track_buffer: 60
+match_thresh: 0.8
+fuse_score: true

@@ -110,6 +110,18 @@ ChickCheck's `RTSPSource` handles network interruptions automatically with expon
 
 ---
 
+## 🎯 Choosing a model
+
+Stock COCO models are not trained on chicks. Measured on `samples/dummy.mp4` (about 20 chicks, CPU):
+
+| Model | Chicks found / frame | Time / frame |
+| :--- | :--- | :--- |
+| `yolo11n` | 0 | 0.4 s |
+| `yolo11m` @960 | ~8 | 1.1 s |
+| `yolo11x` @1280 | ~18 | 4.6 s |
+
+Use a GPU with `yolo11x` + `INFER_IMGSZ=1280`, or fine-tuned poultry weights (below). Wide barn footage with hundreds of small birds (`samples/dummy_2.mp4`) needs fine-tuned weights; COCO models cannot detect it.
+
 ## 🧠 Plugging in Custom Fine-Tuned Weights
 
 If you have fine-tuned a custom YOLO11 model on specific breeds or poultry datasets (e.g. distinguishing hens from roosters):
@@ -175,7 +187,10 @@ This runs offline and outputs:
 | `DENSE_CROWD_MODE`| `true` | Enables spatial clustering, appearance signature re-ID, and extended track memory during tight huddles. |
 | `VIDEO_SOURCE` | `samples/dummy.mp4` | Video file path or RTSP/HTTP network stream URL. |
 | `DATABASE_URL` | `sqlite:///./data/chickcheck.db` | SQLAlchemy database URL (SQLite or PostgreSQL). |
-| `MODEL_WEIGHTS` | `yolo11n.pt` | Default YOLO model weights. |
+| `MODEL_WEIGHTS` | `yolo11m.pt` | Default YOLO model weights (see *Choosing a model*). |
+| `ADAPTIVE_CONF_FLOOR` | `0.10` | Adaptive scaling never lowers confidence below this. |
+| `POULTRY_PROXY_CLASSES` | `sheep,teddy bear` | Extra COCO classes accepted as chicks (poultry only). |
+| `POULTRY_COLOR_FUSION` | `false` | Experimental colour-blob detector for missed chicks. |
 | `CUSTOM_WEIGHTS_PATH` | `None` | Path to custom fine-tuned weights file. |
 | `CUSTOM_CLASS_NAMES` | `None` | Comma-separated class names for custom weights. |
 | `HEALTH_CLASSIFIER_PATH`| `None` | Optional path to YOLO-cls model weights. |

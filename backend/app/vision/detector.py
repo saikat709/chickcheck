@@ -1,44 +1,60 @@
 import os
 import logging
 from typing import List, Tuple, Optional, Any, Dict
+
 import cv2
 import numpy as np
 import torch
+import yaml
 from ultralytics import YOLO
 
-from backend.app.config import settings, SPECIES_PROFILES
+from backend.app.config import settings
 from backend.app.vision.enhancer import AdaptiveImageEnhancer
 
 logger = logging.getLogger("chickcheck.vision.detector")
 
+POULTRY_SPECIES = {"chicken", "duck"}
+
+# Class-name aliases used to find a species in a custom (non-COCO) model.
+CUSTOM_ALIASES: Dict[str, List[str]] = {
+    "chicken": ["chicken", "chick", "hen", "rooster", "broiler", "poultry"],
+    "duck": ["duck", "duckling"],
+    "cow": ["cow", "cattle"],
+    "sheep": ["sheep"],
+    "goat": ["goat"],
+}
+
+
+def _iomin(a: Tuple[float, ...], b: Tuple[float, ...]) -> float:
+    """Intersection over the SMALLER box. Catches a small box sitting inside a big one."""
+    ix = max(0.0, min(a[2], b[2]) - max(a[0], b[0]))
+    iy = max(0.0, min(a[3], b[3]) - max(a[1], b[1]))
+    smaller = min((a[2] - a[0]) * (a[3] - a[1]), (b[2] - b[0]) * (b[3] - b[1]))
+    return (ix * iy) / max(1e-6, smaller)
+
 
 class LivestockDetector:
     """
-    Wraps Ultralytics YOLO11 model with ByteTrack multi-object tracking.
-    Supports multi-species detection concurrently and adaptive image enhancement
-    for low-resolution surveillance footage.
+    Wraps Ultralytics YOLO with ByteTrack. Returns detections as dicts.
+    `id` is the ByteTrack id, or None when the tracker did not assign one.
+    Detections without an id are matched to tracks by TrackerPool (never given invented ids here).
     """
 
     def __init__(self):
-        self.device = settings.DEVICE
-        if not self.device:
-            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = settings.DEVICE or ("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"LivestockDetector initializing on device: {self.device}")
 
-        # Choose weights: custom fine-tuned weights or default YOLO11
         model_path = settings.CUSTOM_WEIGHTS_PATH or settings.MODEL_WEIGHTS
         logger.info(f"Loading YOLO tracking model from '{model_path}'...")
         self.model = YOLO(model_path)
         self.model.to(self.device)
 
-        # Optional Health Classifier model
         self.classifier: Optional[YOLO] = None
         if settings.HEALTH_CLASSIFIER_PATH and os.path.exists(settings.HEALTH_CLASSIFIER_PATH):
             logger.info(f"Loading Health Classifier from '{settings.HEALTH_CLASSIFIER_PATH}'...")
             self.classifier = YOLO(settings.HEALTH_CLASSIFIER_PATH)
             self.classifier.to(self.device)
 
-        # Low-resolution adaptive preprocessor
         self.enhancer = AdaptiveImageEnhancer(
             clahe_clip_limit=settings.CLAHE_CLIP_LIMIT,
             sharpen_strength=settings.SHARPEN_FACTOR,
@@ -46,84 +62,82 @@ class LivestockDetector:
             low_res_threshold_w=640,
         )
 
-        self._next_id: int = 1
-        self._ensure_poultry_tracker_config()
         self._configure_classes()
+        self._tracker_cfg = self._write_tracker_config()
 
-    def _ensure_poultry_tracker_config(self) -> str:
-        """Ensures custom ByteTrack configuration for dense poultry flocks exists."""
-        tracker_path = os.path.join(os.path.dirname(__file__), "poultry_tracker.yaml")
-        if not os.path.exists(tracker_path):
-            import yaml
-            cfg = {
-                "tracker_type": "bytetrack",
-                "track_high_thresh": 0.05,
-                "track_low_thresh": 0.01,
-                "new_track_thresh": 0.03,
-                "track_buffer": 60,
-                "match_thresh": 0.7,
-                "fuse_score": True,
-            }
-            with open(tracker_path, "w") as f:
-                yaml.dump(cfg, f)
-        return tracker_path
+    # ------------------------------------------------------------------ setup
+    def _write_tracker_config(self) -> str:
+        """ByteTrack config whose thresholds match the confidence we actually run at.
+        (Old config had thresholds far below the confidence filter and created ghost tracks.)"""
+        template = os.path.join(os.path.dirname(__file__), "poultry_tracker.yaml")
+        with open(template) as f:
+            cfg = yaml.safe_load(f)
+        base = max(0.01, min(float(settings.ADAPTIVE_CONF_FLOOR), float(settings.CONF_THRESHOLD)))
+        cfg["track_high_thresh"] = base
+        cfg["new_track_thresh"] = base
+        cfg["track_low_thresh"] = max(0.01, base * 0.5)
+        os.makedirs(settings.DATA_DIR, exist_ok=True)
+        path = os.path.join(settings.DATA_DIR, "bytetrack_chickcheck.yaml")
+        with open(path, "w") as f:
+            yaml.safe_dump(cfg, f)
+        return path
 
-    def _alloc_id(self, existing_ids: Optional[List[int]] = None) -> int:
-        if existing_ids:
-            max_id = max([i for i in existing_ids if i > 0] + [0])
-            self._next_id = max(self._next_id, max_id + 1)
-        tid = self._next_id
-        self._next_id += 1
-        if self._next_id > 10000:
-            self._next_id = 1
-        return tid
+    @staticmethod
+    def _is_coco_like(names: Dict[str, int]) -> bool:
+        return {"person", "bird", "cow", "sheep"}.issubset(names.keys())
 
     def _configure_classes(self) -> None:
-        """Determines target class indices and maps them to species names."""
-        self.target_class_ids: List[int] = []
+        """Pick which model classes to keep and which species each one means.
+        Never filters with hard-coded COCO ids unless the model really is COCO."""
         self.class_id_to_species: Dict[int, str] = {}
+        ids: List[int] = []
+        names = {str(v).lower(): int(k) for k, v in self.model.names.items()}
+        active = settings.get_active_species_list()
 
-        model_names = {v.lower(): k for k, v in self.model.names.items()}
+        def add(cid: int, sp: str) -> None:
+            if cid not in self.class_id_to_species:  # first claim wins; real classes are added before proxies
+                self.class_id_to_species[cid] = sp
+                ids.append(cid)
 
         if settings.CUSTOM_CLASS_NAMES:
-            custom_names = [c.strip().lower() for c in settings.CUSTOM_CLASS_NAMES.split(",") if c.strip()]
-            for name in custom_names:
-                if name in model_names:
-                    cid = model_names[name]
-                    self.target_class_ids.append(cid)
-                    self.class_id_to_species[cid] = name
-            if not self.target_class_ids:
-                logger.warning(f"None of custom classes {custom_names} found in model names: {list(self.model.names.values())}")
-                self.target_class_ids = None
+            for n in [c.strip().lower() for c in settings.CUSTOM_CLASS_NAMES.split(",") if c.strip()]:
+                if n in names:
+                    add(names[n], n)
+        elif self._is_coco_like(names):
+            for sp in active:  # real classes first (bird, cow, sheep)
+                cid = names.get(settings.get_species_profile(sp).coco_class_name.lower())
+                if cid is not None:
+                    add(cid, sp)
+            poultry = [sp for sp in active if sp in POULTRY_SPECIES]
+            if poultry:  # proxies only fill classes no real species has claimed
+                for n in [c.strip().lower() for c in settings.POULTRY_PROXY_CLASSES.split(",") if c.strip()]:
+                    if n in names:
+                        add(names[n], poultry[0])
+        else:  # custom model, no CUSTOM_CLASS_NAMES: look the species up by name
+            for sp in active:
+                for alias in CUSTOM_ALIASES.get(sp, [sp]):
+                    if alias in names:
+                        add(names[alias], sp)
+
+        if ids:
+            self.target_class_ids: Optional[List[int]] = ids
         else:
-            active_species = settings.get_active_species_list()
-            is_poultry = any(sp in ["chicken", "duck", "bird"] for sp in active_species)
+            logger.warning(
+                f"No model class matched species {active} (model classes: {list(names)}). "
+                "Detecting ALL classes. Set CUSTOM_CLASS_NAMES to fix this."
+            )
+            self.target_class_ids = None
+        logger.info(f"Target class ids for {active}: {self.target_class_ids} -> {self.class_id_to_species}")
 
-            if is_poultry:
-                # Top-down overhead chicks and broilers are frequently categorized by COCO models
-                # into visual proxies: 14 (bird), 18 (sheep/fluffy wool), 46 (banana/yellow curves),
-                # 77 (teddy bear/plush), 15 (cat), 16 (dog).
-                poultry_coco_proxies = [14, 18, 46, 77, 15, 16]
-                for cid in poultry_coco_proxies:
-                    if cid not in self.target_class_ids:
-                        self.target_class_ids.append(cid)
-                    self.class_id_to_species[cid] = "chicken" if "chicken" in active_species else active_species[0]
-            else:
-                for sp in active_species:
-                    profile = settings.get_species_profile(sp)
-                    coco_name = profile.coco_class_name.lower()
-                    if coco_name in model_names:
-                        cid = model_names[coco_name]
-                        if cid not in self.target_class_ids:
-                            self.target_class_ids.append(cid)
-                        self.class_id_to_species[cid] = sp
-                    else:
-                        cid = profile.coco_class_id
-                        if cid not in self.target_class_ids:
-                            self.target_class_ids.append(cid)
-                        self.class_id_to_species[cid] = sp
-
-        logger.info(f"Target detection class IDs for active species {settings.get_active_species_list()}: {self.target_class_ids}")
+    # -------------------------------------------------------------- inference
+    def _effective_conf(self, conf: float, h: int, w: int, was_enhanced: bool, is_poultry: bool) -> float:
+        """Adaptive scaling may LOWER the user's confidence, but never below ADAPTIVE_CONF_FLOOR
+        and never above what the user set. (Old code forced 0.015 for all poultry.)"""
+        if not settings.ADAPTIVE_CONF_SCALING:
+            return conf
+        if is_poultry or h < settings.LOW_RES_MAX_DIM or w < 640 or was_enhanced:
+            return min(conf, max(float(settings.ADAPTIVE_CONF_FLOOR), conf * 0.6))
+        return conf
 
     def track(
         self,
@@ -132,28 +146,16 @@ class LivestockDetector:
         conf: float = 0.25,
         enhance_low_res: bool = True,
     ) -> Tuple[List[Dict[str, Any]], bool]:
-        """
-        Runs YOLO11 inference, plumage contour segmentation fusion, and ByteTrack persistence.
-        """
         was_enhanced = False
         input_frame = frame
-
-        # Adaptive Low-Resolution & Contrast Enhancement
         if enhance_low_res and settings.ENHANCE_LOW_RES:
             input_frame, was_enhanced = self.enhancer.enhance(frame, target_inference_dim=imgsz)
 
         h, w = frame.shape[:2]
         total_area = h * w
-        effective_conf = conf
-        is_poultry = any(sp in ["chicken", "duck", "bird"] for sp in settings.get_active_species_list())
-
-        if settings.ADAPTIVE_CONF_SCALING:
-            if is_poultry:
-                effective_conf = min(conf, 0.015)
-            elif h < settings.LOW_RES_MAX_DIM or w < 640 or was_enhanced:
-                effective_conf = min(conf, 0.05)
-
-        tracker_config = self._ensure_poultry_tracker_config() if is_poultry else "bytetrack.yaml"
+        active = settings.get_active_species_list()
+        is_poultry = any(sp in POULTRY_SPECIES for sp in active)
+        effective_conf = self._effective_conf(conf, h, w, was_enhanced, is_poultry)
 
         results = self.model.track(
             source=input_frame,
@@ -162,19 +164,20 @@ class LivestockDetector:
             conf=effective_conf,
             iou=0.55 if is_poultry else 0.7,
             classes=self.target_class_ids,
-            tracker=tracker_config,
+            tracker=self._tracker_cfg,
             device=self.device,
+            agnostic_nms=True,  # one box per animal even if two classes (bird/sheep) fire on it
             verbose=False,
         )
 
-        detections = []
-        seen_boxes = []
+        detections: List[Dict[str, Any]] = []
         ih, iw = input_frame.shape[:2]
-        scale_x = w / float(iw)
-        scale_y = h / float(ih)
-        primary_species = settings.get_active_species_list()[0]
+        scale_x, scale_y = w / float(iw), h / float(ih)
+        primary_species = active[0]
+        min_side = max(6.0, settings.MIN_BOX_FRACTION * min(h, w))
+        max_area = settings.MAX_BOX_AREA_FRACTION * total_area
 
-        if results and len(results) > 0 and results[0].boxes is not None:
+        if results and len(results) > 0 and results[0].boxes is not None and len(results[0].boxes) > 0:
             boxes = results[0].boxes
             xyxy = boxes.xyxy.cpu().numpy()
             confs = boxes.conf.cpu().numpy()
@@ -182,108 +185,73 @@ class LivestockDetector:
             track_ids = boxes.id.cpu().numpy().astype(int) if boxes.id is not None else None
 
             for i in range(len(xyxy)):
-                raw_box = xyxy[i]
-                if scale_x != 1.0 or scale_y != 1.0:
-                    box = (
-                        float(raw_box[0] * scale_x),
-                        float(raw_box[1] * scale_y),
-                        float(raw_box[2] * scale_x),
-                        float(raw_box[3] * scale_y),
-                    )
-                else:
-                    box = tuple(map(float, raw_box))
-
-                bw = box[2] - box[0]
-                bh = box[3] - box[1]
-                area = bw * bh
-
-                # Discard giant background/feeder boxes (> 30% of entire frame) and tiny noise (< 16px)
-                if area > (0.30 * total_area) or bw < 16 or bh < 16:
+                x1, y1, x2, y2 = (float(xyxy[i][0]) * scale_x, float(xyxy[i][1]) * scale_y,
+                                  float(xyxy[i][2]) * scale_x, float(xyxy[i][3]) * scale_y)
+                bw, bh = x2 - x1, y2 - y1
+                if bw * bh > max_area or bw < min_side or bh < min_side:
                     continue
-
-                tid = int(track_ids[i]) if (track_ids is not None and track_ids[i] > 0) else self._alloc_id()
                 cid = int(cls_ids[i])
-                cname = self.model.names.get(cid, str(cid))
-                confidence = float(confs[i])
-                detected_species = self.class_id_to_species.get(cid, primary_species)
-
+                tid = int(track_ids[i]) if (track_ids is not None and track_ids[i] > 0) else None
                 detections.append({
                     "id": tid,
-                    "bbox": box,
-                    "conf": confidence,
+                    "bbox": (x1, y1, x2, y2),
+                    "conf": float(confs[i]),
                     "class_id": cid,
-                    "class_name": cname,
-                    "species": detected_species,
+                    "class_name": self.model.names.get(cid, str(cid)),
+                    "species": self.class_id_to_species.get(cid, primary_species),
                 })
-                seen_boxes.append(box)
 
-        # 2. Morphological Plumage Fusion:
-        # Detects subtle, occluded, or touching chicks (especially around the central feeder)
-        # where CNN receptive fields merge adjacent birds.
-        if is_poultry:
-            hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-            # High value/luminance, low to moderate saturation matches broiler plumage against dirt bedding
-            mask = cv2.inRange(hsv, np.array([0, 0, 130]), np.array([180, 110, 255]))
-            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-            opened = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
-            contours, _ = cv2.findContours(opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-            for c in contours:
-                c_area = cv2.contourArea(c)
-                if 700 < c_area < (0.25 * total_area):
-                    bx, by, bw, bh = cv2.boundingRect(c)
-                    if 0.3 < (bw / max(1, bh)) < 3.0:
-                        blob_box = (float(bx), float(by), float(bx + bw), float(by + bh))
-                        # Check IoU overlap with all existing detected boxes
-                        overlapped = False
-                        for sb in seen_boxes:
-                            inter_x1 = max(blob_box[0], sb[0])
-                            inter_y1 = max(blob_box[1], sb[1])
-                            inter_x2 = min(blob_box[2], sb[2])
-                            inter_y2 = min(blob_box[3], sb[3])
-                            inter = max(0.0, inter_x2 - inter_x1) * max(0.0, inter_y2 - inter_y1)
-                            a1 = (blob_box[2] - blob_box[0]) * (blob_box[3] - blob_box[1])
-                            a2 = (sb[2] - sb[0]) * (sb[3] - sb[1])
-                            iou = inter / max(1e-6, a1 + a2 - inter)
-                            if iou > 0.25:
-                                overlapped = True
-                                break
-                        if not overlapped:
-                            existing_ids = [d["id"] for d in detections]
-                            tid = self._alloc_id(existing_ids)
-                            detections.append({
-                                "id": tid,
-                                "bbox": blob_box,
-                                "conf": 0.40,
-                                "class_id": 14,
-                                "class_name": "chick",
-                                "species": primary_species,
-                            })
-                            seen_boxes.append(blob_box)
+        if is_poultry and settings.POULTRY_COLOR_FUSION:
+            detections.extend(self._color_fusion(frame, [d["bbox"] for d in detections], primary_species))
 
         return detections, was_enhanced
 
+    def _color_fusion(self, frame: np.ndarray, seen: List[Tuple[float, ...]], species: str) -> List[Dict[str, Any]]:
+        """Experimental: add pale blobs YOLO missed. Hardened vs. the old version:
+        needs >=3 YOLO boxes to calibrate size, keeps only chick-sized, compact blobs,
+        and skips blobs overlapping an existing box (IoMin, not IoU)."""
+        if len(seen) < 3:
+            return []
+        areas = [(b[2] - b[0]) * (b[3] - b[1]) for b in seen]
+        med = float(np.median(areas))
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        mask = cv2.inRange(hsv, np.array([0, 0, 130]), np.array([180, 110, 255]))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)))
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        out: List[Dict[str, Any]] = []
+        for c in contours:
+            area = cv2.contourArea(c)
+            if not (0.4 * med <= area <= 2.0 * med):
+                continue
+            hull = cv2.contourArea(cv2.convexHull(c))
+            if hull <= 0 or area / hull < 0.85:  # compact blobs only (walls/beams are ragged)
+                continue
+            bx, by, bw, bh = cv2.boundingRect(c)
+            if not (0.4 < bw / max(1, bh) < 2.5):
+                continue
+            box = (float(bx), float(by), float(bx + bw), float(by + bh))
+            if any(_iomin(box, s) > 0.3 for s in seen):
+                continue
+            seen.append(box)
+            out.append({"id": None, "bbox": box, "conf": 0.30, "class_id": -1,
+                        "class_name": "chick", "species": species})
+        return out
+
+    # ------------------------------------------------------------- classifier
     def classify_crop(self, crop_bgr: np.ndarray) -> Optional[float]:
-        """
-        Runs optional classifier on a single animal crop.
-        Returns probability of 'healthy' class (0.0 to 1.0) or None if classifier not loaded.
-        """
+        """Probability of the 'healthy' class, or None if unknown. Never guesses class 0."""
         if self.classifier is None or crop_bgr is None or crop_bgr.size == 0:
             return None
-
         try:
             res = self.classifier(crop_bgr, verbose=False, device=self.device)
             if res and len(res) > 0 and res[0].probs is not None:
                 probs = res[0].probs.data.cpu().numpy()
                 names = self.classifier.names
-                healthy_idx = 0
-                for idx, name in names.items():
-                    if "healthy" in str(name).lower():
-                        healthy_idx = idx
-                        break
-                return float(probs[healthy_idx])
+                items = names.items() if isinstance(names, dict) else enumerate(names)
+                for idx, name in items:
+                    if any(k in str(name).lower() for k in ("healthy", "normal")):
+                        return float(probs[int(idx)])
+                logger.warning(f"Health classifier has no 'healthy'/'normal' class: {names}")
         except Exception as e:
             logger.warning(f"Classification inference failed: {e}")
-            return None
-
         return None

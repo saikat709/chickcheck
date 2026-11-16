@@ -199,10 +199,18 @@ class AnimalTrackState:
         return abs(current_ar - self.baseline_aspect_ratio)
 
 
+SYNTHETIC_ID_BASE = 1_000_000  # ids for detections ByteTrack did not label; never collides with tracker ids
+RETIRED_MATCH_WINDOW_S = 3.0
+
+
 class TrackerPool:
     """
-    Manages active and historical track states with dense-crowd handling
-    and multi-species track persistence.
+    Manages active and retired tracks. Association is two-pass:
+      1. detections whose tracker id is already known update their own track first;
+      2. the rest (new/missing ids) are matched one-to-one, nearest first, to tracks
+         NOT updated this frame, otherwise a new track is created.
+    (Old code matched in detection order to the first nearby track, so a new chick next
+    to a not-yet-updated neighbour was absorbed into the neighbour's track.)
     """
 
     def __init__(self, track_lost_seconds: float = 2.5, max_trail_points: int = 30):
@@ -210,12 +218,105 @@ class TrackerPool:
         self.max_trail_points = max_trail_points
         self.tracks: Dict[int, AnimalTrackState] = {}
         self.retired_tracks: Dict[int, AnimalTrackState] = {}
+        self._alias: Dict[int, int] = {}  # tracker id -> pool key it was merged into
+        self._next_synthetic = SYNTHETIC_ID_BASE
 
     def get_effective_track_lost_seconds(self) -> float:
         """In dense flocks (>12 animals), retain tracks longer during mutual occlusions."""
         if len(self.tracks) >= 12:
             return max(self.track_lost_seconds, 4.0)
         return self.track_lost_seconds
+
+    def _new_synthetic_id(self) -> int:
+        while self._next_synthetic in self.tracks or self._next_synthetic in self.retired_tracks:
+            self._next_synthetic += 1
+        sid = self._next_synthetic
+        self._next_synthetic += 1
+        return sid
+
+    def _resolve(self, tid: int) -> Optional[int]:
+        key = self._alias.get(tid, tid)
+        return key if (key in self.tracks or key in self.retired_tracks) else None
+
+    def _apply(self, key, ts, bbox, idle, species, img) -> AnimalTrackState:
+        track = self.tracks.get(key)
+        if track is None:  # revive a retired track
+            track = self.retired_tracks.pop(key)
+            self.tracks[key] = track
+        track.update(ts, bbox, idle, species=species, frame_bgr=img)
+        return track
+
+    def _create(self, tid: Optional[int], ts, bbox, species, img) -> AnimalTrackState:
+        if tid is not None and tid < SYNTHETIC_ID_BASE and tid not in self.tracks and tid not in self.retired_tracks:
+            key = tid
+            self._alias.pop(tid, None)
+        else:
+            key = self._new_synthetic_id()
+        track = AnimalTrackState(key, ts, bbox, species=species)
+        track.trail = deque(maxlen=self.max_trail_points)
+        track.trail.append(((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0))
+        if img is not None:
+            track.update_appearance(img, bbox)
+        self.tracks[key] = track
+        return track
+
+    def update_detections(
+        self,
+        detections: List[Dict],
+        timestamp: float,
+        idle_speed_threshold_norm: float = 0.05,
+        frame: Optional[np.ndarray] = None,
+    ) -> List[Tuple[Dict, AnimalTrackState]]:
+        """Update the pool with one frame of detections. Returns (detection, track) pairs."""
+        results: List[Optional[AnimalTrackState]] = [None] * len(detections)
+        updated: Set[int] = set()
+        pending: List[int] = []
+
+        for i, det in enumerate(detections):  # pass 1: known ids
+            tid = det.get("id")
+            key = self._resolve(tid) if tid is not None else None
+            if key is not None and key not in updated:
+                results[i] = self._apply(key, timestamp, det["bbox"], idle_speed_threshold_norm,
+                                         det.get("species") or "chicken", frame)
+                updated.add(key)
+            else:
+                pending.append(i)
+
+        if pending:  # pass 2: nearest-first, one-to-one
+            candidates = []
+            for i in pending:
+                b = detections[i]["bbox"]
+                sp = detections[i].get("species") or "chicken"
+                cx, cy = (b[0] + b[2]) / 2.0, (b[1] + b[3]) / 2.0
+                diag = math.hypot(b[2] - b[0], b[3] - b[1])
+                for key, tr in list(self.tracks.items()) + list(self.retired_tracks.items()):
+                    if key in updated or tr.species != sp or tr.last_seen >= timestamp:
+                        continue
+                    retired = key in self.retired_tracks
+                    if retired and (timestamp - tr.last_seen) >= RETIRED_MATCH_WINDOW_S:
+                        continue
+                    cost = math.hypot(cx - tr.last_centroid[0], cy - tr.last_centroid[1]) / max(diag, tr.last_diag, 1.0)
+                    if cost < (1.5 if retired else 1.0):
+                        candidates.append((cost, i, key))
+            candidates.sort()
+            matched: Set[int] = set()
+            for _, i, key in candidates:
+                if i in matched or key in updated:
+                    continue
+                det = detections[i]
+                results[i] = self._apply(key, timestamp, det["bbox"], idle_speed_threshold_norm,
+                                         det.get("species") or "chicken", frame)
+                updated.add(key)
+                matched.add(i)
+                if det.get("id") is not None:
+                    self._alias[det["id"]] = key
+            for i in pending:
+                if i not in matched:
+                    det = detections[i]
+                    results[i] = self._create(det.get("id"), timestamp, det["bbox"],
+                                              det.get("species") or "chicken", frame)
+
+        return [(d, t) for d, t in zip(detections, results) if t is not None]
 
     def update_track(
         self,
@@ -227,57 +328,10 @@ class TrackerPool:
         frame_bgr: Optional[np.ndarray] = None,
         frame: Optional[np.ndarray] = None,
     ) -> AnimalTrackState:
+        """Single-detection convenience wrapper (kept for tests/benchmark)."""
         img = frame if frame is not None else frame_bgr
-        if animal_id in self.tracks:
-            track = self.tracks[animal_id]
-            track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=img)
-        elif animal_id in self.retired_tracks:
-            # Re-appearance of a previously retired track
-            track = self.retired_tracks.pop(animal_id)
-            track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=img)
-            self.tracks[animal_id] = track
-        else:
-            # Check if this new detection strongly matches an un-updated active track or recently retired track
-            matched_id = None
-            cx = (bbox[0] + bbox[2]) / 2.0
-            cy = (bbox[1] + bbox[3]) / 2.0
-            diag = math.hypot(bbox[2] - bbox[0], bbox[3] - bbox[1])
-
-            # 1. Match un-updated active tracks (recovers single-frame tracking dropouts)
-            for act_id, act_track in self.tracks.items():
-                if act_track.last_seen < timestamp and act_track.species == species:
-                    dist = math.hypot(cx - act_track.last_centroid[0], cy - act_track.last_centroid[1])
-                    if dist < 1.0 * max(diag, act_track.last_diag):
-                        matched_id = act_id
-                        break
-
-            if matched_id is not None:
-                track = self.tracks[matched_id]
-                track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=img)
-                return track
-
-            # 2. Match recently retired tracks
-            if self.retired_tracks:
-                for ret_id, ret_track in self.retired_tracks.items():
-                    if ret_track.species == species and (timestamp - ret_track.last_seen) < 3.0:
-                        dist = math.hypot(cx - ret_track.last_centroid[0], cy - ret_track.last_centroid[1])
-                        if dist < 1.5 * max(diag, ret_track.last_diag):
-                            matched_id = ret_id
-                            break
-
-            if matched_id is not None:
-                track = self.retired_tracks.pop(matched_id)
-                track.update(timestamp, bbox, idle_speed_threshold_norm, species=species, frame_bgr=img)
-                self.tracks[matched_id] = track
-            else:
-                track = AnimalTrackState(animal_id, timestamp, bbox, species=species)
-                track.trail = deque(maxlen=self.max_trail_points)
-                track.trail.append(((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0))
-                if img is not None:
-                    track.update_appearance(img, bbox)
-                self.tracks[animal_id] = track
-
-        return track
+        det = {"id": animal_id, "bbox": bbox, "species": species}
+        return self.update_detections([det], timestamp, idle_speed_threshold_norm, img)[0][1]
 
     def prune_lost_tracks(self, current_time: float) -> List[int]:
         lost_ids = []
@@ -286,10 +340,11 @@ class TrackerPool:
             if track.is_lost(current_time, effective_timeout):
                 lost_ids.append(animal_id)
                 self.retired_tracks[animal_id] = self.tracks.pop(animal_id)
-                # Keep retired tracks bounded to prevent memory leaks
                 if len(self.retired_tracks) > 500:
-                    oldest_key = min(self.retired_tracks.keys(), key=lambda k: self.retired_tracks[k].last_seen)
-                    self.retired_tracks.pop(oldest_key, None)
+                    oldest = min(self.retired_tracks, key=lambda k: self.retired_tracks[k].last_seen)
+                    self.retired_tracks.pop(oldest, None)
+        if len(self._alias) > 2000:  # drop aliases pointing at forgotten tracks
+            self._alias = {a: k for a, k in self._alias.items() if k in self.tracks or k in self.retired_tracks}
         return lost_ids
 
     def get_active_tracks(self) -> List[AnimalTrackState]:
