@@ -126,13 +126,13 @@ class Settings(BaseSettings):
     VIDEO_SOURCE: str = "samples/dummy.mp4"
 
     # Vision & Model
-    MODEL_WEIGHTS: str = "yolo11n.pt"
+    MODEL_WEIGHTS: str = "yolo11m.pt"  # yolo11n finds ~0 chicks; see README "Choosing a model"
     CUSTOM_WEIGHTS_PATH: Optional[str] = None
     CUSTOM_CLASS_NAMES: Optional[str] = None  # Comma-separated or single class
     HEALTH_CLASSIFIER_PATH: Optional[str] = None
     PROCESS_EVERY_N: int = 2
     INFER_IMGSZ: int = 640
-    CONF_THRESHOLD: float = 0.08
+    CONF_THRESHOLD: float = 0.25
     DEVICE: Optional[str] = None  # None for auto-detect (cuda if available else cpu)
     TRACK_LOST_SECONDS: float = 2.5
     MAX_TRAIL_POINTS: int = 30
@@ -143,6 +143,13 @@ class Settings(BaseSettings):
     CLAHE_CLIP_LIMIT: float = 2.5
     SHARPEN_FACTOR: float = 0.4
     ADAPTIVE_CONF_SCALING: bool = True
+    ADAPTIVE_CONF_FLOOR: float = 0.10  # adaptive scaling never lowers confidence below this
+    # Extra COCO classes that stock COCO models often output for top-down chicks (poultry only)
+    POULTRY_PROXY_CLASSES: str = "sheep,teddy bear"
+    # Experimental colour-blob detector for poultry. OFF by default: it boxes walls/feeders on wide shots.
+    POULTRY_COLOR_FUSION: bool = False
+    MIN_BOX_FRACTION: float = 0.01  # min box side as a fraction of the frame's short side (floor 6 px)
+    MAX_BOX_AREA_FRACTION: float = 0.30  # drop boxes larger than this share of the frame
     DENSE_CROWD_MODE: bool = True
 
     # Database

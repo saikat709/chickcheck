@@ -191,18 +191,13 @@ class LivestockPipeline:
                     )
                     self._is_enhanced = was_enhanced
 
-                    # Update individual track states
-                    for det in detections:
-                        tid = det["id"]
+                    # Update track states (two-pass id association, thresholds computed once per frame)
+                    idle_thr = settings.get_active_thresholds().inactivity_speed_norm
+                    matched = self.tracker_pool.update_detections(
+                        detections, ts, idle_speed_threshold_norm=idle_thr, frame=raw_frame
+                    )
+                    for det, track in matched:
                         bbox = det["bbox"]
-                        track = self.tracker_pool.update_track(
-                            animal_id=tid,
-                            timestamp=ts,
-                            bbox=bbox,
-                            idle_speed_threshold_norm=settings.get_active_thresholds().inactivity_speed_norm,
-                            species=det.get("species", settings.SPECIES),
-                            frame=raw_frame,
-                        )
                         animal_bboxes[track.animal_id] = bbox
 
                         # Optional crop classification if classifier model is loaded
