@@ -114,30 +114,33 @@ class FrameAnnotator:
                 bh = max(2, y2 - y1)
                 color = cls.get_status_color(t.status)
 
+                # Responsive font and box thickness
+                box_thick = max(2, int(round(min(w, h) / 720.0 * 2.0)))
+                font_scale = max(0.40, min(w, h) / 1080.0 * 0.45)
+                font_thick = max(1, int(round(font_scale * 1.5)))
+
                 if box_shape == "ellipse":
                     cx, cy = (x1 + x2) // 2, (y1 + y2) // 2
                     ew, eh = max(12, bw // 2), max(12, bh // 2)
-                    cv2.ellipse(out, (cx, cy), (ew, eh), 0, 0, 360, color, 2, lineType=cv2.LINE_AA)
+                    cv2.ellipse(out, (cx, cy), (ew, eh), 0, 0, 360, color, box_thick, lineType=cv2.LINE_AA)
                 else:
                     # Clean, solid bounding box framing the chick
-                    cv2.rectangle(out, (x1, y1), (x2, y2), color, 2, lineType=cv2.LINE_AA)
+                    cv2.rectangle(out, (x1, y1), (x2, y2), color, box_thick, lineType=cv2.LINE_AA)
 
-                # Entity Track ID Tag Pill (e.g. "#1" or "#1 [95]")
+                # Entity Track ID Tag Pill (e.g. "#1")
                 label = f"#{t.animal_id}"
                 font = cv2.FONT_HERSHEY_SIMPLEX
-                font_scale = 0.45
-                thickness = 1
-                (tw, th), baseline = cv2.getTextSize(label, font, font_scale, thickness)
+                (tw, th), baseline = cv2.getTextSize(label, font, font_scale, font_thick)
 
-                # Position label above chick box
+                # Position label neatly above chick box
                 pill_h = th + 8
                 pill_w = tw + 10
-                pill_y1 = max(45, y1 - pill_h)
+                pill_y1 = max(4, y1 - pill_h - 2)
                 pill_y2 = pill_y1 + pill_h
                 pill_x1 = max(0, x1)
                 pill_x2 = min(w - 1, pill_x1 + pill_w)
 
-                # Pill background in status color with dark border
+                # Pill background in status color with subtle shadow
                 cv2.rectangle(out, (pill_x1, pill_y1), (pill_x2, pill_y2), color, -1)
                 cv2.rectangle(out, (pill_x1, pill_y1), (pill_x2, pill_y2), COLOR_DARK, 1, lineType=cv2.LINE_AA)
                 cv2.putText(
@@ -147,59 +150,9 @@ class FrameAnnotator:
                     font,
                     font_scale,
                     COLOR_DARK if t.status == "watch" else COLOR_WHITE,
-                    thickness,
+                    font_thick,
                     lineType=cv2.LINE_AA,
                 )
-
-        # 5. Render HUD Header
-        hud_h = 42
-        hud_overlay = out.copy()
-        cv2.rectangle(hud_overlay, (0, 0), (w, hud_h), COLOR_DARK, -1)
-        cv2.addWeighted(hud_overlay, 0.85, out, 0.15, 0, out)
-
-        status_color = cls.get_status_color(flock_status)
-        time_str = datetime.datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
-
-        # Left HUD: Title & Status pill
-        font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(out, "CHICKCHECK", (15, 27), font, 0.65, COLOR_WHITE, 2, cv2.LINE_AA)
-        cv2.putText(out, f"| {species.upper()}", (145, 27), font, 0.55, (200, 200, 200), 1, cv2.LINE_AA)
-
-        # Enhanced badge if CLAHE/adaptive enhancement was active
-        curr_x = 245
-        if was_enhanced:
-            enh_text = "ENHANCED (CLAHE)"
-            (ew, eh), _ = cv2.getTextSize(enh_text, font, 0.4, 1)
-            cv2.rectangle(out, (curr_x, 10), (curr_x + ew + 10, 32), (180, 100, 20), -1)
-            cv2.putText(out, enh_text, (curr_x + 5, 25), font, 0.4, COLOR_WHITE, 1, cv2.LINE_AA)
-            curr_x += ew + 18
-
-        # Status badge
-        badge_text = f"FLOCK: {flock_status.upper()} ({int(flock_health_score)})"
-        (bw, bh), _ = cv2.getTextSize(badge_text, font, 0.5, 1)
-        cv2.rectangle(out, (curr_x, 8), (curr_x + bw + 14, 34), status_color, -1)
-        cv2.putText(
-            out,
-            badge_text,
-            (curr_x + 7, 26),
-            font,
-            0.5,
-            COLOR_DARK if flock_status == "watch" else COLOR_WHITE,
-            1,
-            cv2.LINE_AA,
-        )
-
-        # Right HUD: Count, FPS, Time
-        if density_info and "count" in density_info:
-            c_val = density_info["count"]
-            u_val = density_info.get("uncertainty", 0)
-            m_val = density_info.get("method", "box")
-            method_short = "Grid" if "density" in m_val else "Box"
-            right_info = f"Flock: {c_val}±{u_val} [{method_short}]   FPS: {fps:.1f}   {time_str}"
-        else:
-            right_info = f"Tracked: {len(tracks)}   FPS: {fps:.1f}   {time_str}"
-        (rw, rh), _ = cv2.getTextSize(right_info, font, 0.5, 1)
-        cv2.putText(out, right_info, (max(curr_x + bw + 20, w - rw - 15), 26), font, 0.5, COLOR_WHITE, 1, cv2.LINE_AA)
 
         return out
 

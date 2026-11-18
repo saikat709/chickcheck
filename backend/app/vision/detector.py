@@ -162,11 +162,11 @@ class LivestockDetector:
             persist=True,
             imgsz=imgsz,
             conf=effective_conf,
-            iou=0.55 if is_poultry else 0.7,
+            iou=0.75 if is_poultry else 0.7,
             classes=self.target_class_ids,
             tracker=self._tracker_cfg,
             device=self.device,
-            agnostic_nms=True,  # one box per animal even if two classes (bird/sheep) fire on it
+            agnostic_nms=False,
             verbose=False,
         )
 

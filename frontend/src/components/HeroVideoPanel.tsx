@@ -1,7 +1,24 @@
 "use client";
 
-import React, { useState } from "react";
-import { Flame, Maximize2, RefreshCw, Shield, AlertTriangle, AlertOctagon, CheckCircle2, Sparkles, Users, Square, Circle, Wind, MapPin, Utensils, Droplets } from "lucide-react";
+import React, { useState, useRef } from "react";
+import {
+  Flame,
+  Maximize2,
+  RefreshCw,
+  Camera,
+  Shield,
+  AlertTriangle,
+  AlertOctagon,
+  Sparkles,
+  Square,
+  Circle,
+  Wind,
+  MapPin,
+  Utensils,
+  Droplets,
+  Activity,
+  CheckCircle2,
+} from "lucide-react";
 import { LiveStats } from "@/lib/api";
 import { useLanguage } from "@/lib/LanguageContext";
 
@@ -18,6 +35,7 @@ export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
   const [boxShape, setBoxShape] = useState<"box" | "ellipse">("box");
   const [streamError, setStreamError] = useState(false);
   const [streamNonce, setStreamNonce] = useState(Date.now());
+  const videoContainerRef = useRef<HTMLDivElement>(null);
 
   const status = (stats.status || "healthy").toLowerCase();
 
@@ -34,7 +52,7 @@ export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
         return {
           bg: "bg-amber-500/10 border-amber-500/30 text-amber-600 dark:text-amber-400",
           icon: AlertTriangle,
-          label: t("status_watch", "WATCH"),
+          label: t("status_watch", "MONITORING"),
           barBg: "bg-amber-500",
         };
       default:
@@ -47,39 +65,71 @@ export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
     }
   };
 
+  const toggleFullscreen = () => {
+    if (!videoContainerRef.current) return;
+    if (!document.fullscreenElement) {
+      videoContainerRef.current.requestFullscreen().catch((err) => {
+        console.error("Error attempting to enable fullscreen:", err);
+      });
+    } else {
+      document.exitFullscreen();
+    }
+  };
+
+  const takeSnapshot = () => {
+    const a = document.createElement("a");
+    a.href = `/api/stream/video?heatmap=${showHeatmap}&show_boxes=${showBoxes}&box_shape=${boxShape}&show_flow=${showFlow}&show_zones=${showZones}&_t=${Date.now()}`;
+    a.download = `chickcheck_snapshot_${Date.now()}.jpg`;
+    a.target = "_blank";
+    a.click();
+  };
+
   const badge = getStatusBadge();
   const StatusIcon = badge.icon;
   const streamUrl = `/api/stream/video?heatmap=${showHeatmap}&show_boxes=${showBoxes}&box_shape=${boxShape}&show_flow=${showFlow}&show_zones=${showZones}&_t=${streamNonce}`;
 
-  const displayedCount = stats.density_count !== undefined && stats.density_count > 0
-    ? `${stats.density_count} ± ${stats.uncertainty || 0}`
-    : `${stats.count}`;
+  const displayedCount =
+    stats.density_count !== undefined && stats.density_count > 0
+      ? `${stats.density_count} ± ${stats.uncertainty || 0}`
+      : `${stats.count}`;
+
+  const feederPct = Math.round(stats.zone_occupancy?.feeder || stats.zone_occupancy?.feeder_zone || 58);
+  const drinkerPct = Math.round(stats.zone_occupancy?.drinker || stats.zone_occupancy?.drinker_zone || 42);
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-sm">
-      {/* Top Header / Status Bar */}
-      <div className="p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800">
+    <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 shadow-md overflow-hidden flex flex-col">
+      {/* 1. Header Bar: Status & Hardware Telemetry */}
+      <div className="px-5 py-4 flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50">
         <div className="flex items-center gap-3">
           <div
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-sm font-bold tracking-wide ${badge.bg}`}
+            className={`flex items-center gap-2 px-3 py-1 rounded-xl border text-xs font-black uppercase tracking-wider ${badge.bg}`}
           >
-            <StatusIcon className="w-4 h-4 shrink-0" />
-            <span>FLOCK STATUS: {badge.label}</span>
+            <StatusIcon className="w-3.5 h-3.5" />
+            <span>{badge.label}</span>
           </div>
-          <span className="text-xs text-slate-500 dark:text-slate-400">
-            Pipeline: <strong>{stats.fps.toFixed(1)} FPS</strong>
-          </span>
+
+          <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>CCTV 01</span>
+            </span>
+            <span>·</span>
+            <span>{stats.fps > 0 ? `${stats.fps.toFixed(1)} FPS` : "Live Stream"}</span>
+          </div>
         </div>
 
-        {/* Health Score Gauge */}
+        {/* Health Score Pill */}
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">{t("metric_flock_health", "Health Index")}</div>
-            <div className="text-xl font-extrabold tracking-tight">
-              {stats.flock_health_score.toFixed(0)} <span className="text-xs font-normal text-slate-400">/100</span>
+            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+              {t("metric_flock_health", "Flock Health")}
+            </div>
+            <div className="text-lg font-black tracking-tight leading-none text-slate-900 dark:text-white">
+              {stats.flock_health_score.toFixed(0)}
+              <span className="text-xs font-normal text-slate-400">/100</span>
             </div>
           </div>
-          <div className="w-16 h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden p-0.5">
+          <div className="w-14 h-2.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all duration-500 ${badge.barBg}`}
               style={{ width: `${Math.max(5, Math.min(100, stats.flock_health_score))}%` }}
@@ -88,66 +138,88 @@ export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
         </div>
       </div>
 
-      {/* Video Viewport Container */}
-      <div className="relative aspect-video w-full bg-slate-950 flex items-center justify-center overflow-hidden">
+      {/* 2. Uncluttered Video Viewport Container */}
+      <div
+        ref={videoContainerRef}
+        className="relative aspect-video w-full bg-black flex items-center justify-center overflow-hidden select-none"
+      >
         {streamError ? (
-          <div className="text-center p-6 text-slate-400">
-            <RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin text-slate-500" />
-            <p className="font-semibold text-sm">{t("video_offline_title", "Connecting to video stream...")}</p>
+          <div className="text-center p-8 text-slate-400 space-y-3">
+            <RefreshCw className="w-9 h-9 mx-auto animate-spin text-slate-500" />
+            <div>
+              <p className="font-bold text-sm text-slate-200">
+                {t("video_offline_title", "Video Stream Connecting...")}
+              </p>
+              <p className="text-xs text-slate-500 mt-1">Connecting to backend video pipeline</p>
+            </div>
             <button
               onClick={() => {
                 setStreamError(false);
                 setStreamNonce(Date.now());
               }}
-              className="mt-3 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors"
+              className="px-4 py-2 text-xs font-bold bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-all shadow-md"
             >
-              Retry Connection
+              Reconnect Video
             </button>
           </div>
         ) : (
           <img
             src={streamUrl}
-            alt="ChickCheck Annotated Livestock Stream"
+            alt="ChickCheck Livestock Vision Stream"
             onError={() => setStreamError(true)}
-            className="w-full h-full object-contain"
+            className="w-full h-full object-cover"
           />
         )}
 
-        {/* Video Overlay Controls */}
-        <div className="absolute bottom-3 right-3 flex flex-wrap items-center gap-2">
-          {/* Tracking Boxes & ID Toggle */}
+        {/* Subtle Top-Left Live Tag */}
+        <div className="absolute top-3 left-3 flex items-center gap-2 pointer-events-none">
+          <div className="px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-white text-[11px] font-bold border border-white/10 flex items-center gap-1.5 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>{displayedCount} {t("nav_dashboard", "Birds Tracked")}</span>
+          </div>
+
+          {stats.density_regime && (
+            <div className="px-2.5 py-1 rounded-lg bg-black/60 backdrop-blur-md text-slate-200 text-[11px] font-medium border border-white/10 shadow-sm">
+              <span>{stats.density_regime === "dense_crowd" ? "Dense Sliced Regime" : "Standard Box Regime"}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 3. Dedicated Clean Video Toolbar (OUTSIDE the video so it never blocks birds!) */}
+      <div className="px-4 py-3 bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2.5">
+        {/* Left: View Overlays */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* Boxes & IDs Toggle */}
           <button
             onClick={() => {
               setShowBoxes(!showBoxes);
               setStreamNonce(Date.now());
             }}
-            title="Toggle entity bounding boxes and tracking ID numbers"
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md flex items-center gap-1.5 transition-all shadow-md ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
               showBoxes
-                ? "bg-emerald-600/90 text-white border border-emerald-400/40"
-                : "bg-slate-900/80 text-slate-300 hover:bg-slate-800 border border-white/10"
+                ? "bg-emerald-600 text-white shadow-emerald-600/20"
+                : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700"
             }`}
           >
             <Square className="w-3.5 h-3.5" />
-            <span>{t("video_boxes_toggle", "Boxes & IDs")} {showBoxes ? "ON" : "OFF"}</span>
+            <span>{t("video_boxes_toggle", "Boxes & IDs")}</span>
           </button>
 
-          {/* Optical Flow Motion Vector Overlay Toggle */}
-          <button
-            onClick={() => {
-              setShowFlow(!showFlow);
-              setStreamNonce(Date.now());
-            }}
-            title="Toggle dense Farnebäck optical flow motion vector field"
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md flex items-center gap-1.5 transition-all shadow-md ${
-              showFlow
-                ? "bg-cyan-600 text-white border border-cyan-400/40"
-                : "bg-slate-900/80 text-slate-300 hover:bg-slate-800 border border-white/10"
-            }`}
-          >
-            <Wind className="w-3.5 h-3.5" />
-            <span>{t("video_flow_toggle", "Motion Flow")} {showFlow ? "ON" : "OFF"}</span>
-          </button>
+          {/* Box Shape Toggle */}
+          {showBoxes && (
+            <button
+              onClick={() => {
+                setBoxShape(boxShape === "box" ? "ellipse" : "box");
+                setStreamNonce(Date.now());
+              }}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 flex items-center gap-1"
+              title="Toggle Box / Ellipse contour shape"
+            >
+              {boxShape === "box" ? <Circle className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
+              <span className="capitalize">{boxShape}</span>
+            </button>
+          )}
 
           {/* Barn Zones Toggle */}
           <button
@@ -155,108 +227,113 @@ export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
               setShowZones(!showZones);
               setStreamNonce(Date.now());
             }}
-            title="Toggle feeder, drinker, and resting zones overlay"
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md flex items-center gap-1.5 transition-all shadow-md ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
               showZones
-                ? "bg-indigo-600 text-white border border-indigo-400/40"
-                : "bg-slate-900/80 text-slate-300 hover:bg-slate-800 border border-white/10"
+                ? "bg-indigo-600 text-white shadow-indigo-600/20"
+                : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700"
             }`}
           >
             <MapPin className="w-3.5 h-3.5" />
-            <span>{t("video_zones_toggle", "Barn Zones")} {showZones ? "ON" : "OFF"}</span>
+            <span>{t("video_zones_toggle", "Barn Zones")}</span>
           </button>
 
-          {/* Heatmap Toggle */}
+          {/* Motion Flow Vectors Toggle */}
+          <button
+            onClick={() => {
+              setShowFlow(!showFlow);
+              setStreamNonce(Date.now());
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
+              showFlow
+                ? "bg-cyan-600 text-white shadow-cyan-600/20"
+                : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700"
+            }`}
+          >
+            <Wind className="w-3.5 h-3.5" />
+            <span>{t("video_flow_toggle", "Motion Flow")}</span>
+          </button>
+
+          {/* Density Heatmap Toggle */}
           <button
             onClick={() => {
               setShowHeatmap(!showHeatmap);
               setStreamNonce(Date.now());
             }}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md flex items-center gap-1.5 transition-all shadow-md ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm ${
               showHeatmap
-                ? "bg-amber-600 text-white"
-                : "bg-slate-900/80 text-slate-200 hover:bg-slate-800/90 border border-white/10"
+                ? "bg-amber-600 text-white shadow-amber-600/20"
+                : "bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700"
             }`}
           >
             <Flame className="w-3.5 h-3.5" />
-            <span>{t("video_heatmap_toggle", "Heatmap")} {showHeatmap ? "ON" : "OFF"}</span>
+            <span>{t("video_heatmap_toggle", "Heatmap")}</span>
           </button>
         </div>
 
-        {/* Top Badges */}
-        <div className="absolute top-3 left-3 flex flex-wrap items-center gap-2">
-          <div className="bg-slate-950/75 backdrop-blur-md text-white text-xs font-medium px-2.5 py-1 rounded-md border border-white/10 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>{displayedCount} {t("nav_dashboard", "Flock")}</span>
-          </div>
+        {/* Right: Actions */}
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={takeSnapshot}
+            className="p-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
+            title="Download high-resolution snapshot"
+          >
+            <Camera className="w-4 h-4" />
+          </button>
 
-          {stats.density_regime && (
-            <div className="bg-slate-900/80 backdrop-blur-md text-slate-200 text-xs font-medium px-2.5 py-1 rounded-md border border-white/10">
-              <span>{stats.density_regime === "dense_crowd" ? "Dense Crowd Regime" : "Sparse Box Regime"}</span>
-            </div>
-          )}
-
-          {stats.is_enhanced && (
-            <div className="bg-sky-950/80 backdrop-blur-md text-sky-300 text-xs font-semibold px-2.5 py-1 rounded-md border border-sky-500/30 flex items-center gap-1 shadow-sm">
-              <Sparkles className="w-3.5 h-3.5 text-sky-400" />
-              <span>Low-Res Enhanced (CLAHE)</span>
-            </div>
-          )}
+          <button
+            onClick={toggleFullscreen}
+            className="p-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors"
+            title="Toggle Fullscreen"
+          >
+            <Maximize2 className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
-      {/* Feed & Water Quick-Gauges Strip */}
-      {(() => {
-        const feederPct = Math.round(stats.zone_occupancy?.feeder || stats.zone_occupancy?.feeder_zone || 58);
-        const drinkerPct = Math.round(stats.zone_occupancy?.drinker || stats.zone_occupancy?.drinker_zone || 42);
-
-        return (
-          <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-800 bg-slate-50/60 dark:bg-slate-900/60 border-t border-slate-100 dark:border-slate-800 p-3 sm:p-4 text-xs">
-            {/* Feeder Gauge */}
-            <div className="px-3 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <Utensils className="w-3.5 h-3.5 text-amber-500" />
-                  {t("feeder_line_quick", "Feed Line Occupancy")}
-                </span>
-                <span className="font-bold text-slate-900 dark:text-white">{feederPct}%</span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-amber-500 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(100, Math.max(5, feederPct))}%` }}
-                />
-              </div>
-              <div className="text-[10px] text-slate-400 flex items-center justify-between">
-                <span>{t("status_active_feeding", "Active Feeding")}</span>
-                <span className="text-emerald-500 font-medium">Optimal</span>
-              </div>
-            </div>
-
-            {/* Drinker Gauge */}
-            <div className="px-3 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                  <Droplets className="w-3.5 h-3.5 text-cyan-500" />
-                  {t("drinker_line_quick", "Water Line Flow")}
-                </span>
-                <span className="font-bold text-slate-900 dark:text-white">{drinkerPct}%</span>
-              </div>
-              <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-cyan-500 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(100, Math.max(5, drinkerPct))}%` }}
-                />
-              </div>
-              <div className="text-[10px] text-slate-400 flex items-center justify-between">
-                <span>{t("status_normal_drinking", "Normal Drinking")}</span>
-                <span className="text-cyan-500 font-medium">Continuous</span>
-              </div>
-            </div>
+      {/* 4. Live Feeder & Drinker Line Status Gauges */}
+      <div className="grid grid-cols-2 divide-x divide-slate-200 dark:divide-slate-800 bg-slate-100/60 dark:bg-slate-900/60 border-t border-slate-200 dark:border-slate-800 p-3 sm:p-4 text-xs">
+        {/* Feeder Gauge */}
+        <div className="px-3 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+              <Utensils className="w-3.5 h-3.5 text-amber-500" />
+              {t("feeder_line_quick", "Feed Line Occupancy")}
+            </span>
+            <span className="font-extrabold text-slate-900 dark:text-white">{feederPct}%</span>
           </div>
-        );
-      })()}
+          <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-amber-500 to-amber-600 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(100, Math.max(5, feederPct))}%` }}
+            />
+          </div>
+          <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+            <span>{t("status_active_feeding", "Active Feeding")}</span>
+            <span className="text-emerald-500 font-bold">Normal Rhythm</span>
+          </div>
+        </div>
+
+        {/* Drinker Gauge */}
+        <div className="px-3 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+              <Droplets className="w-3.5 h-3.5 text-cyan-500" />
+              {t("drinker_line_quick", "Water Line Flow")}
+            </span>
+            <span className="font-extrabold text-slate-900 dark:text-white">{drinkerPct}%</span>
+          </div>
+          <div className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-cyan-500 to-teal-500 rounded-full transition-all duration-500"
+              style={{ width: `${Math.min(100, Math.max(5, drinkerPct))}%` }}
+            />
+          </div>
+          <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+            <span>{t("status_normal_drinking", "Normal Drinking")}</span>
+            <span className="text-cyan-500 font-bold">Uninterrupted</span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
-
