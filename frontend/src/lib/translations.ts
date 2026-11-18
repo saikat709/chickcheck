@@ -95,6 +95,18 @@ export const translations = {
     report_executive_summary: "Executive Summary",
     settings_title: "System & Barn Calibration",
     settings_saved: "Settings updated successfully",
+
+    // Tabs & Workspace
+    tab_flock_analytics: "Flock Trends & Zones",
+    tab_tracked_birds: "Tracked Birds Screening",
+    tab_incident_archive: "Incident Clips & Evidence",
+    barn_shed_name: "Shed 01 — Commercial Broiler House (North)",
+    barn_batch_info: "Batch #14 • Age: Day 22 Broiler",
+    barn_target_info: "Target Harvest: Day 35",
+    tab_incidents_empty: "No incident clips recorded yet.",
+    tab_incidents_count: "Recorded Events",
+    btn_watch_clip: "Watch Clip",
+    btn_view_snapshot: "View Snapshot",
   },
   bn: {
     // Header & Navigation
@@ -190,6 +202,18 @@ export const translations = {
     report_executive_summary: "নির্বাহী সারসংক্ষেপ",
     settings_title: "সিস্টেম ও শেড ক্যালিব্রেশন",
     settings_saved: "সেটিংস সফলভাবে সংরক্ষিত হয়েছে",
+
+    // Tabs & Workspace
+    tab_flock_analytics: "ঝাঁকের গতিবিধি ও জোন বিশ্লেষণ",
+    tab_tracked_birds: "পাখির পৃথক নিরীক্ষণ",
+    tab_incident_archive: "ঘটনার ভিডিও ক্লিপ ও প্রমাণ",
+    barn_shed_name: "শেড ০১ — বাণিজ্যিক ব্রয়লার হাউস (উত্তর)",
+    barn_batch_info: "ব্যাচ ১৪ • বয়স: ২২ তম দিন (ব্রয়লার)",
+    barn_target_info: "বাজারজাতকরণ: ৩৫ তম দিন",
+    tab_incidents_empty: "এখনো কোনো ভিডিও ক্লিপ রেকর্ড করা হয়নি।",
+    tab_incidents_count: "রেকর্ডকৃত ঘটনা",
+    btn_watch_clip: "ক্লিপ দেখুন",
+    btn_view_snapshot: "স্ন্যাপশট দেখুন",
   },
 };
 
