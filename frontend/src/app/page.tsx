@@ -10,8 +10,12 @@ import { AnimalTable } from "@/components/AnimalTable";
 import { AnimalDetailDrawer } from "@/components/AnimalDetailDrawer";
 import { ZoneOccupancyView } from "@/components/ZoneOccupancyView";
 import { IncidentGallery } from "@/components/IncidentGallery";
+import { EmergencyBanner } from "@/components/EmergencyBanner";
+import { PhysicalInspectionModal } from "@/components/PhysicalInspectionModal";
+import { BroilerLifecycleBar } from "@/components/BroilerLifecycleBar";
+import { soundManager } from "@/lib/soundAlert";
 import { useLanguage } from "@/lib/LanguageContext";
-import { TrendingUp, Layers, Video, ShieldCheck, Calendar, MapPin, Activity } from "lucide-react";
+import { TrendingUp, Layers, Video, ShieldCheck, Calendar, MapPin, AlertCircle } from "lucide-react";
 
 export default function DashboardPage() {
   const { t } = useLanguage();
@@ -35,6 +39,7 @@ export default function DashboardPage() {
   const [animals, setAnimals] = useState<AnimalTrack[]>([]);
   const [selectedAnimalId, setSelectedAnimalId] = useState<number | null>(null);
   const [activeTab, setActiveTab] = useState<"analytics" | "birds" | "incidents">("analytics");
+  const [isPhysicalModalOpen, setIsPhysicalModalOpen] = useState<boolean>(false);
 
   // Initial data loading
   useEffect(() => {
@@ -102,6 +107,15 @@ export default function DashboardPage() {
         try {
           const newEvt = JSON.parse(evt.data);
           setEvents((prev) => [newEvt, ...prev.slice(0, 49)]);
+
+          // Sound chime trigger for critical incidents
+          if (
+            newEvt.severity === "critical" ||
+            newEvt.alert_type === "panic_movement" ||
+            newEvt.alert_type === "immobile_bird_candidate"
+          ) {
+            soundManager.playCriticalChime();
+          }
         } catch (e) {}
       });
 
@@ -144,9 +158,21 @@ export default function DashboardPage() {
   // Count events with media for badge
   const mediaEventsCount = events.filter((e) => e.snapshot_path || e.clip_path).length;
 
+  // Immobile candidates count
+  const immobileCandidatesCount = events.filter(
+    (e) => !e.acknowledged && (e.alert_type === "immobile_bird_candidate" || e.alert_type === "fallen_posture")
+  ).length;
+
   return (
     <div className="space-y-6">
-      {/* 1. Barn & Batch Status Header */}
+      {/* 1. Emergency Callout Banner (Appears when active critical event occurs) */}
+      <EmergencyBanner
+        events={events}
+        onAcknowledge={handleAcknowledge}
+        onOpenPhysicalModal={() => setIsPhysicalModalOpen(true)}
+      />
+
+      {/* 2. Barn & Batch Status Header */}
       <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-4 sm:p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
@@ -167,8 +193,28 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Global Health Status Badge */}
+        {/* Global Health Status & Physical Inspection Quick Pill */}
         <div className="flex items-center gap-3">
+          {/* Physical Check Pill */}
+          <button
+            onClick={() => setIsPhysicalModalOpen(true)}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm ${
+              immobileCandidatesCount > 0
+                ? "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/30 animate-pulse hover:bg-amber-500/25"
+                : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200"
+            }`}
+            title="Inspect flagged immobile bird candidates"
+          >
+            <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+            <span>{t("physical_check_btn", "Physical Check")}</span>
+            {immobileCandidatesCount > 0 && (
+              <span className="w-5 h-5 rounded-full bg-amber-500 text-white text-[10px] font-black flex items-center justify-center">
+                {immobileCandidatesCount}
+              </span>
+            )}
+          </button>
+
+          {/* Health Badge */}
           <div
             className={`px-3.5 py-1.5 rounded-xl border text-xs font-bold uppercase tracking-wider flex items-center gap-2 shadow-sm ${getStatusBadge(
               stats.status
@@ -182,7 +228,10 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 2. Operations Command Deck: Live CCTV Stream (Left 2 cols) & Real-time Alerts Feed (Right 1 col) */}
+      {/* 3. Broiler Lifecycle Progress Bar (Day 1 -> Day 35) */}
+      <BroilerLifecycleBar currentDay={22} totalDays={35} />
+
+      {/* 4. Operations Command Deck: Live CCTV Stream (Left 2 cols) & Real-time Alerts Feed (Right 1 col) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2">
           <HeroVideoPanel stats={stats} />
@@ -192,10 +241,10 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 3. Core Flock KPI Strip (Uncertainty Range, Activity, Crowding, FPS) */}
+      {/* 5. Core Flock KPI Strip (Uncertainty Range, Activity, Crowding, FPS) */}
       <MetricsCards stats={stats} />
 
-      {/* 4. Modular Workspace Tabs Navigation */}
+      {/* 6. Modular Workspace Tabs Navigation */}
       <div className="border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center gap-2 sm:gap-4 overflow-x-auto pb-1">
           {/* Tab 1: Flock Trends & Barn Zones */}
@@ -247,7 +296,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* 5. Modular Tab Content */}
+      {/* 7. Modular Tab Content */}
       <div className="pt-2">
         {/* Tab 1: Flock Trends & Zone Distribution Side-by-Side */}
         {activeTab === "analytics" && (
@@ -276,10 +325,17 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* Animal Detail Drawer (Global) */}
+      {/* Modals & Drawers */}
       <AnimalDetailDrawer
         animalId={selectedAnimalId}
         onClose={() => setSelectedAnimalId(null)}
+      />
+
+      <PhysicalInspectionModal
+        isOpen={isPhysicalModalOpen}
+        onClose={() => setIsPhysicalModalOpen(false)}
+        events={events}
+        onAcknowledge={handleAcknowledge}
       />
     </div>
   );

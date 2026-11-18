@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Bell, FileText, Settings as SettingsIcon, Sun, Moon, Radio, ShieldCheck, Globe } from "lucide-react";
+import { Activity, Bell, FileText, Settings as SettingsIcon, Sun, Moon, Radio, ShieldCheck, Globe, Volume2, VolumeX } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
+import { soundManager } from "@/lib/soundAlert";
 
 interface NavbarProps {
   species?: string;
@@ -14,14 +15,25 @@ interface NavbarProps {
 export function Navbar({ species = "chicken", sourceStatus = "live" }: NavbarProps) {
   const pathname = usePathname();
   const [darkMode, setDarkMode] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(false);
   const { language, toggleLanguage, t } = useLanguage();
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       const isDark = document.documentElement.classList.contains("dark");
       setDarkMode(isDark);
+      setSoundEnabled(soundManager.isEnabled());
     }
   }, []);
+
+  const toggleSound = () => {
+    const next = !soundEnabled;
+    setSoundEnabled(next);
+    soundManager.setEnabled(next);
+    if (next) {
+      soundManager.playCriticalChime();
+    }
+  };
 
   const toggleTheme = () => {
     const nextDark = !darkMode;
@@ -95,6 +107,19 @@ export function Navbar({ species = "chicken", sourceStatus = "live" }: NavbarPro
                 </Link>
               );
             })}
+
+            {/* Audio Alert Chime Toggle */}
+            <button
+              onClick={toggleSound}
+              className={`p-2 ml-1 rounded-lg transition-colors ${
+                soundEnabled
+                  ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20"
+                  : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+              }`}
+              title={soundEnabled ? "Audio Alert Chime: ON" : "Audio Alert Chime: MUTED"}
+            >
+              {soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </button>
 
             {/* Language Switcher Pill (EN | বাংলা) */}
             <button

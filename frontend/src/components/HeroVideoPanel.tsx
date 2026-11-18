@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Flame, Maximize2, RefreshCw, Shield, AlertTriangle, AlertOctagon, CheckCircle2, Sparkles, Users, Square, Circle, Wind, MapPin } from "lucide-react";
+import { Flame, Maximize2, RefreshCw, Shield, AlertTriangle, AlertOctagon, CheckCircle2, Sparkles, Users, Square, Circle, Wind, MapPin, Utensils, Droplets } from "lucide-react";
 import { LiveStats } from "@/lib/api";
 import { useLanguage } from "@/lib/LanguageContext";
 
@@ -204,6 +204,58 @@ export function HeroVideoPanel({ stats }: HeroVideoPanelProps) {
           )}
         </div>
       </div>
+
+      {/* Feed & Water Quick-Gauges Strip */}
+      {(() => {
+        const feederPct = Math.round(stats.zone_occupancy?.feeder || stats.zone_occupancy?.feeder_zone || 58);
+        const drinkerPct = Math.round(stats.zone_occupancy?.drinker || stats.zone_occupancy?.drinker_zone || 42);
+
+        return (
+          <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-800 bg-slate-50/60 dark:bg-slate-900/60 border-t border-slate-100 dark:border-slate-800 p-3 sm:p-4 text-xs">
+            {/* Feeder Gauge */}
+            <div className="px-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <Utensils className="w-3.5 h-3.5 text-amber-500" />
+                  {t("feeder_line_quick", "Feed Line Occupancy")}
+                </span>
+                <span className="font-bold text-slate-900 dark:text-white">{feederPct}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-amber-500 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.max(5, feederPct))}%` }}
+                />
+              </div>
+              <div className="text-[10px] text-slate-400 flex items-center justify-between">
+                <span>{t("status_active_feeding", "Active Feeding")}</span>
+                <span className="text-emerald-500 font-medium">Optimal</span>
+              </div>
+            </div>
+
+            {/* Drinker Gauge */}
+            <div className="px-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                  <Droplets className="w-3.5 h-3.5 text-cyan-500" />
+                  {t("drinker_line_quick", "Water Line Flow")}
+                </span>
+                <span className="font-bold text-slate-900 dark:text-white">{drinkerPct}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-cyan-500 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, Math.max(5, drinkerPct))}%` }}
+                />
+              </div>
+              <div className="text-[10px] text-slate-400 flex items-center justify-between">
+                <span>{t("status_normal_drinking", "Normal Drinking")}</span>
+                <span className="text-cyan-500 font-medium">Continuous</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
