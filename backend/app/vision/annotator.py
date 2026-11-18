@@ -44,15 +44,29 @@ class FrameAnnotator:
         show_trails: bool = False,
         show_clusters: bool = False,
         box_shape: str = "box",
+        show_flow: bool = False,
+        flow_analyzer: Optional[Any] = None,
+        zone_manager: Optional[Any] = None,
+        show_zones: bool = False,
+        immobile_candidates: Optional[List[Dict[str, Any]]] = None,
+        density_info: Optional[Dict[str, Any]] = None,
     ) -> np.ndarray:
         out = frame.copy()
         h, w = out.shape[:2]
+
+        # 0. Render Barn Zones if requested
+        if show_zones and zone_manager is not None:
+            out = zone_manager.render_zones_overlay(out)
 
         # 1. Heatmap blend if requested
         if show_heatmap and heatmap is not None:
             heat_rgb, mask = heatmap.get_overlay(out.shape)
             mask_norm = (mask.astype(float) / 255.0)[:, :, None]
             out = (out * (1.0 - 0.45 * mask_norm) + heat_rgb * (0.45 * mask_norm)).astype(np.uint8)
+
+        # 1b. Optical flow vectors if requested
+        if show_flow and flow_analyzer is not None:
+            out = flow_analyzer.render_flow_overlay(out, step=28)
 
         # 2. Render Spatial Clusters (only if explicitly enabled)
         if show_clusters and clusters:
@@ -65,6 +79,17 @@ class FrameAnnotator:
                     (cl_w, cl_h), _ = cv2.getTextSize(cl_label, cv2.FONT_HERSHEY_SIMPLEX, 0.4, 1)
                     cv2.rectangle(out, (cx - cl_w // 2 - 4, cy - cr - cl_h - 4), (cx + cl_w // 2 + 4, cy - cr), (24, 24, 27), -1)
                     cv2.putText(out, cl_label, (cx - cl_w // 2, cy - cr - 2), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (40, 200, 255), 1, cv2.LINE_AA)
+
+        # 2b. Render Immobile Bird Candidates (Mortality/Lethargy Alert)
+        if immobile_candidates:
+            for cand in immobile_candidates:
+                ix1, iy1, ix2, iy2 = cand["bbox"]
+                dur = round(cand.get("duration_s", 0.0), 1)
+                cv2.rectangle(out, (ix1, iy1), (ix2, iy2), (0, 0, 255), 3, lineType=cv2.LINE_AA)
+                cand_label = f"IMMOBILE: {dur}s"
+                (lw, lh), _ = cv2.getTextSize(cand_label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+                cv2.rectangle(out, (ix1, max(45, iy1 - lh - 6)), (ix1 + lw + 8, max(45, iy1)), (0, 0, 200), -1)
+                cv2.putText(out, cand_label, (ix1 + 4, max(45, iy1) - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLOR_WHITE, 1, cv2.LINE_AA)
 
         # 3. Render Motion Trails (only if explicitly enabled)
         if show_trails:
@@ -165,7 +190,14 @@ class FrameAnnotator:
         )
 
         # Right HUD: Count, FPS, Time
-        right_info = f"Tracked: {len(tracks)}   FPS: {fps:.1f}   {time_str}"
+        if density_info and "count" in density_info:
+            c_val = density_info["count"]
+            u_val = density_info.get("uncertainty", 0)
+            m_val = density_info.get("method", "box")
+            method_short = "Grid" if "density" in m_val else "Box"
+            right_info = f"Flock: {c_val}±{u_val} [{method_short}]   FPS: {fps:.1f}   {time_str}"
+        else:
+            right_info = f"Tracked: {len(tracks)}   FPS: {fps:.1f}   {time_str}"
         (rw, rh), _ = cv2.getTextSize(right_info, font, 0.5, 1)
         cv2.putText(out, right_info, (max(curr_x + bw + 20, w - rw - 15), 26), font, 0.5, COLOR_WHITE, 1, cv2.LINE_AA)
 

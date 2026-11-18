@@ -9,7 +9,7 @@ from sqlalchemy import desc
 from backend.app.config import settings
 from backend.app.db import get_db
 from backend.app.models import AlertEventRecord
-from backend.app.schemas import AlertEventResponse
+from backend.app.schemas import AlertEventResponse, AlertFeedbackRequest
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -106,4 +106,40 @@ def get_event_clip(
         raise HTTPException(status_code=404, detail="Video clip file missing on disk.")
 
     return FileResponse(full_path, media_type="video/mp4")
+
+
+@router.post("/{event_id}/feedback")
+def submit_event_feedback(
+    event_id: str,
+    payload: AlertFeedbackRequest,
+    db: Session = Depends(get_db),
+):
+    """
+    Submits operator feedback ('correct' or 'false_alarm') on an anomaly alert.
+    Allows real-time verification and continuous refinement of farm alerting thresholds.
+    """
+    rec = (
+        db.query(AlertEventRecord)
+        .filter((AlertEventRecord.event_id == event_id) | (AlertEventRecord.id == int(event_id) if event_id.isdigit() else False))
+        .first()
+    )
+    if not rec:
+        raise HTTPException(status_code=404, detail="Alert event not found.")
+
+    fb = payload.feedback.lower().strip()
+    if fb not in ["correct", "false_alarm"]:
+        raise HTTPException(status_code=400, detail="Feedback must be 'correct' or 'false_alarm'.")
+
+    rec.feedback = fb
+    rec.feedback_notes = payload.notes
+    rec.feedback_at = datetime.datetime.utcnow()
+    db.commit()
+    db.refresh(rec)
+    return {
+        "success": True,
+        "event_id": rec.event_id,
+        "feedback": rec.feedback,
+        "feedback_notes": rec.feedback_notes,
+        "feedback_at": rec.feedback_at.isoformat() if rec.feedback_at else None,
+    }
 

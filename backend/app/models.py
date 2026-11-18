@@ -82,6 +82,9 @@ class AlertEventRecord(Base):
     clip_path = Column(String(512), nullable=True)
     acknowledged = Column(Boolean, default=False, index=True)
     acknowledged_at = Column(DateTime, nullable=True)
+    feedback = Column(String(50), nullable=True)  # correct, false_alarm
+    feedback_notes = Column(Text, nullable=True)
+    feedback_at = Column(DateTime, nullable=True)
 
 
 class HourlyBaselineRecord(Base):

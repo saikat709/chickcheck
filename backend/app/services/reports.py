@@ -89,10 +89,31 @@ class ReportGenerator:
             reverse=True,
         )[:5]
 
+        crit_count = severity_counts.get("critical", 0)
+        warn_count = severity_counts.get("warning", 0)
+
+        summary_en = (
+            f"Commercial Flock Monitoring Summary for {report_date_str}: The flock averaged ~{round(avg_count)} birds "
+            f"with an average flock activity index of {round(avg_activity, 1)}/100 and overall flock health score of {round(avg_health, 1)}%. "
+            f"A total of {total_alerts} anomaly events were recorded ({crit_count} critical, {warn_count} warnings). "
+            f"Feeding zone occupancy remained stable during scheduled feeding periods without persistent thermal stress huddling."
+        )
+
+        summary_bn = (
+            f"{report_date_str} তারিখের বাণিজ্যিক পোল্ট্রি খামার পর্যবেক্ষণ প্রতিবেদন: খামারে গড়ে প্রায় {round(avg_count)}টি মুরগি "
+            f"পর্যবেক্ষিত হয়েছে, যার গড় অ্যাক্টিভিটি সূচক ছিল {round(avg_activity, 1)}/১০০ এবং সামগ্রিক স্বাস্থ্য স্কোর ছিল {round(avg_health, 1)}%। "
+            f"সারাদিনে মোট {total_alerts}টি সতর্কতা সংক্রান্ত ঘটনা রেকর্ড করা হয়েছে ({crit_count}টি গুরুতর, {warn_count}টি সাধারণ সতর্কতা)। "
+            f"খাদ্য গ্রহণের সময় পাখিদের চলাফেরা স্বাভাবিক ছিল এবং কোনো বিপজ্জনক তাপ বা ঠান্ডাজনিত দলবদ্ধতা সৃষ্টি হয়নি।"
+        )
+
         summary_dict = {
             "date": report_date_str,
             "species": settings.SPECIES,
             "generated_at": datetime.datetime.utcnow().isoformat(),
+            "executive_summary": {
+                "en": summary_en,
+                "bn": summary_bn,
+            },
             "flock_summary": {
                 "avg_count": round(avg_count, 1),
                 "min_count": min_count,

@@ -16,6 +16,8 @@ def get_video_stream(
     box_shape: str = Query("box", pattern="^(box|corners|solid|ellipse|reticle)$", description="Tracking box/shape style"),
     show_trails: bool = Query(False, description="Render animal motion trajectory lines"),
     show_clusters: bool = Query(False, description="Render spatial crowding cluster circles"),
+    show_flow: bool = Query(False, description="Render dense optical flow motion vectors"),
+    show_zones: bool = Query(False, description="Render barn zones overlay"),
 ):
     """
     Yields multipart MJPEG video stream of annotated livestock footage.
@@ -26,6 +28,8 @@ def get_video_stream(
         box_shape=box_shape,
         show_trails=show_trails,
         show_clusters=show_clusters,
+        show_flow=show_flow,
+        show_zones=show_zones,
     )
 
     def frame_generator():

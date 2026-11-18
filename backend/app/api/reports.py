@@ -16,12 +16,19 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 def get_daily_report(
     date: Optional[str] = Query(None, description="Date in YYYY-MM-DD format"),
     format: str = Query("json", pattern="^(json|pdf)$"),
+    lang: str = Query("en", pattern="^(en|bn)$"),
     db: Session = Depends(get_db),
 ):
     """
     Returns daily livestock activity & anomaly report either as structured JSON or compiled PDF.
+    Supports English ('en') and Bengali ('bn') localized summaries.
     """
     summary, pdf_rel_path = ReportGenerator.generate_daily_report(db, date)
+
+    if lang == "bn":
+        summary["summary_text"] = summary.get("executive_summary", {}).get("bn", "")
+    else:
+        summary["summary_text"] = summary.get("executive_summary", {}).get("en", "")
 
     if format == "pdf":
         if not pdf_rel_path:

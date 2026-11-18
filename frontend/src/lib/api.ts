@@ -15,6 +15,15 @@ export interface LiveStats {
   species_counts?: Record<string, number>;
   max_cluster_size?: number;
   is_enhanced?: boolean;
+  density_count?: number;
+  uncertainty?: number;
+  count_min?: number;
+  count_max?: number;
+  density_regime?: string;
+  density_method?: string;
+  optical_flow_activity?: number;
+  zone_occupancy?: Record<string, number>;
+  immobile_candidates_count?: number;
 }
 
 export interface HistoryPoint {
@@ -65,6 +74,9 @@ export interface AlertEvent {
   clip_path: string | null;
   acknowledged: boolean;
   acknowledged_at?: string | null;
+  feedback?: string | null;
+  feedback_notes?: string | null;
+  feedback_at?: string | null;
 }
 
 export interface ConfigData {
@@ -201,9 +213,25 @@ export async function testNotifications(): Promise<any> {
   return res.json();
 }
 
-export async function fetchDailyReport(date?: string): Promise<DailyReport> {
-  const url = date ? `${API_BASE}/api/reports/daily?date=${date}` : `${API_BASE}/api/reports/daily`;
+export async function fetchDailyReport(date?: string, lang: string = "en"): Promise<DailyReport> {
+  const url = date
+    ? `${API_BASE}/api/reports/daily?date=${date}&lang=${lang}`
+    : `${API_BASE}/api/reports/daily?lang=${lang}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("Failed to fetch daily report");
+  return res.json();
+}
+
+export async function submitEventFeedback(
+  eventId: string,
+  feedback: "correct" | "false_alarm",
+  notes?: string
+): Promise<{ success: boolean; event_id: string; feedback: string }> {
+  const res = await fetch(`${API_BASE}/api/events/${eventId}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ feedback, notes }),
+  });
+  if (!res.ok) throw new Error("Failed to submit event feedback");
   return res.json();
 }

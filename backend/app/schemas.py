@@ -41,6 +41,14 @@ class LiveStatsResponse(BaseModel):
     species_counts: Dict[str, int] = {}
     max_cluster_size: int = 0
     is_enhanced: bool = False
+    density_count: Optional[int] = None
+    uncertainty: Optional[int] = 0
+    count_min: Optional[int] = None
+    count_max: Optional[int] = None
+    density_regime: Optional[str] = "sparse_box"
+    density_method: Optional[str] = "box_tracking"
+    optical_flow_activity: Optional[float] = None
+    zone_occupancy: Optional[Dict[str, float]] = None
 
 
 class HistoryPoint(BaseModel):
@@ -74,6 +82,14 @@ class AlertEventResponse(BaseModel):
     clip_path: Optional[str]
     acknowledged: bool
     acknowledged_at: Optional[datetime.datetime]
+    feedback: Optional[str] = None
+    feedback_notes: Optional[str] = None
+    feedback_at: Optional[datetime.datetime] = None
+
+
+class AlertFeedbackRequest(BaseModel):
+    feedback: str = Field(..., description="'correct' or 'false_alarm'")
+    notes: Optional[str] = None
 
 
 class ConfigResponse(BaseModel):

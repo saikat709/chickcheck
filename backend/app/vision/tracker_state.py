@@ -69,6 +69,14 @@ class AnimalTrackState:
         self.active_anomalies: Set[str] = set()
         self.cls_prob_healthy: Optional[float] = None  # Optional classifier probability
 
+        # Track quality score (0.0 to 1.0)
+        # Commercial flocks have high occlusions and ID churn.
+        # Per-bird anomaly rules (fallen posture, sudden stop, isolation)
+        # are ONLY trusted when track_quality >= 0.65.
+        self.track_quality: float = 0.3
+        self.detection_confidences: deque = deque(maxlen=30)
+        self.consecutive_hits: int = 1
+
         # Appearance signature (16-bin Hue-Saturation color histogram)
         self.appearance_hist: Optional[np.ndarray] = None
 
@@ -99,11 +107,14 @@ class AnimalTrackState:
         species: Optional[str] = None,
         frame_bgr: Optional[np.ndarray] = None,
         smooth_coords: bool = True,
+        confidence: Optional[float] = None,
     ) -> None:
         dt = current_time - self.last_seen
         self.last_seen = current_time
         if species:
             self.species = species
+        if confidence is not None:
+            self.detection_confidences.append(confidence)
 
         self.raw_bbox = bbox
 
@@ -183,9 +194,38 @@ class AnimalTrackState:
             speed_norm = self.last_speed_norm
 
         self.history.append((current_time, cx, cy, w, h, diag, speed_norm, self.last_heading or 0.0))
+        self.consecutive_hits += 1
+        self._compute_track_quality(dist_px, diag)
 
         if frame_bgr is not None:
             self.update_appearance(frame_bgr, smoothed_bbox)
+
+    def _compute_track_quality(self, step_dist_px: float, diag: float) -> None:
+        """
+        Calculates track reliability score [0.0 - 1.0].
+        Penalizes short track age, high bbox jitter, and teleportation jumps.
+        """
+        # 1. Track age factor: rises to 1.0 over 10 frames
+        age_factor = min(1.0, len(self.history) / 10.0)
+
+        # 2. Bbox jitter penalty: jitter ratio > 0.20 indicates occluded or swapping box
+        jitter_penalty = max(0.0, min(1.0, self.bbox_jitter_ratio / 0.35))
+        jitter_factor = 1.0 - (0.5 * jitter_penalty)
+
+        # 3. Kinematic jump penalty: single frame leap > 1.5 * diag
+        jump_penalty = 0.0
+        if diag > 0 and step_dist_px > (1.5 * diag):
+            jump_penalty = 0.35
+
+        # 4. Confidence history factor
+        conf_factor = float(np.mean(list(self.detection_confidences))) if self.detection_confidences else 0.85
+
+        raw_score = (age_factor * 0.45 + jitter_factor * 0.35 + conf_factor * 0.20) - jump_penalty
+        self.track_quality = max(0.05, min(1.0, raw_score))
+
+    def is_quality_valid(self, threshold: float = 0.50) -> bool:
+        """Returns True if tracking is stable enough to trust individual bird analytics."""
+        return self.track_quality >= threshold and len(self.history) >= 5
 
     def is_lost(self, current_time: float, track_lost_seconds: float) -> bool:
         return (current_time - self.last_seen) > track_lost_seconds
@@ -238,15 +278,15 @@ class TrackerPool:
         key = self._alias.get(tid, tid)
         return key if (key in self.tracks or key in self.retired_tracks) else None
 
-    def _apply(self, key, ts, bbox, idle, species, img) -> AnimalTrackState:
+    def _apply(self, key, ts, bbox, idle, species, img, confidence=None) -> AnimalTrackState:
         track = self.tracks.get(key)
         if track is None:  # revive a retired track
             track = self.retired_tracks.pop(key)
             self.tracks[key] = track
-        track.update(ts, bbox, idle, species=species, frame_bgr=img)
+        track.update(ts, bbox, idle, species=species, frame_bgr=img, confidence=confidence)
         return track
 
-    def _create(self, tid: Optional[int], ts, bbox, species, img) -> AnimalTrackState:
+    def _create(self, tid: Optional[int], ts, bbox, species, img, confidence=None) -> AnimalTrackState:
         if tid is not None and tid < SYNTHETIC_ID_BASE and tid not in self.tracks and tid not in self.retired_tracks:
             key = tid
             self._alias.pop(tid, None)
@@ -255,6 +295,8 @@ class TrackerPool:
         track = AnimalTrackState(key, ts, bbox, species=species)
         track.trail = deque(maxlen=self.max_trail_points)
         track.trail.append(((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0))
+        if confidence is not None:
+            track.detection_confidences.append(confidence)
         if img is not None:
             track.update_appearance(img, bbox)
         self.tracks[key] = track
@@ -274,10 +316,11 @@ class TrackerPool:
 
         for i, det in enumerate(detections):  # pass 1: known ids
             tid = det.get("id")
+            conf = det.get("confidence")
             key = self._resolve(tid) if tid is not None else None
             if key is not None and key not in updated:
                 results[i] = self._apply(key, timestamp, det["bbox"], idle_speed_threshold_norm,
-                                         det.get("species") or "chicken", frame)
+                                         det.get("species") or "chicken", frame, confidence=conf)
                 updated.add(key)
             else:
                 pending.append(i)
@@ -305,7 +348,7 @@ class TrackerPool:
                     continue
                 det = detections[i]
                 results[i] = self._apply(key, timestamp, det["bbox"], idle_speed_threshold_norm,
-                                         det.get("species") or "chicken", frame)
+                                         det.get("species") or "chicken", frame, confidence=det.get("confidence"))
                 updated.add(key)
                 matched.add(i)
                 if det.get("id") is not None:
@@ -314,7 +357,7 @@ class TrackerPool:
                 if i not in matched:
                     det = detections[i]
                     results[i] = self._create(det.get("id"), timestamp, det["bbox"],
-                                              det.get("species") or "chicken", frame)
+                                              det.get("species") or "chicken", frame, confidence=det.get("confidence"))
 
         return [(d, t) for d, t in zip(detections, results) if t is not None]
 
@@ -327,10 +370,12 @@ class TrackerPool:
         species: str = "chicken",
         frame_bgr: Optional[np.ndarray] = None,
         frame: Optional[np.ndarray] = None,
+        confidence: Optional[float] = None,
+        **kwargs,
     ) -> AnimalTrackState:
         """Single-detection convenience wrapper (kept for tests/benchmark)."""
         img = frame if frame is not None else frame_bgr
-        det = {"id": animal_id, "bbox": bbox, "species": species}
+        det = {"id": animal_id, "bbox": bbox, "species": species, "confidence": confidence}
         return self.update_detections([det], timestamp, idle_speed_threshold_norm, img)[0][1]
 
     def prune_lost_tracks(self, current_time: float) -> List[int]:

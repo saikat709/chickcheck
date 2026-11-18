@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Bell, FileText, Settings as SettingsIcon, Sun, Moon, Radio, ShieldCheck } from "lucide-react";
+import { Activity, Bell, FileText, Settings as SettingsIcon, Sun, Moon, Radio, ShieldCheck, Globe } from "lucide-react";
+import { useLanguage } from "@/lib/LanguageContext";
 
 interface NavbarProps {
   species?: string;
@@ -13,6 +14,7 @@ interface NavbarProps {
 export function Navbar({ species = "chicken", sourceStatus = "live" }: NavbarProps) {
   const pathname = usePathname();
   const [darkMode, setDarkMode] = useState(true);
+  const { language, toggleLanguage, t } = useLanguage();
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -32,10 +34,10 @@ export function Navbar({ species = "chicken", sourceStatus = "live" }: NavbarPro
   };
 
   const navLinks = [
-    { href: "/", label: "Dashboard", icon: Activity },
-    { href: "/events", label: "Events", icon: Bell },
-    { href: "/reports", label: "Reports", icon: FileText },
-    { href: "/settings", label: "Settings", icon: SettingsIcon },
+    { href: "/", label: t("nav_dashboard", "Dashboard"), icon: Activity },
+    { href: "/events", label: t("nav_events", "Events"), icon: Bell },
+    { href: "/reports", label: t("nav_reports", "Reports"), icon: FileText },
+    { href: "/settings", label: t("nav_settings", "Settings"), icon: SettingsIcon },
   ];
 
   const isLive = sourceStatus.toLowerCase() === "live";
@@ -52,7 +54,7 @@ export function Navbar({ species = "chicken", sourceStatus = "live" }: NavbarPro
               </div>
               <div>
                 <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-emerald-600 to-teal-500 bg-clip-text text-transparent">
-                  ChickCheck
+                  {t("app_title", "ChickCheck")}
                 </span>
                 <span className="hidden sm:inline-block ml-2 text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 capitalize border border-slate-200 dark:border-slate-700">
                   {species}
@@ -68,12 +70,12 @@ export function Navbar({ species = "chicken", sourceStatus = "live" }: NavbarPro
                 }`}
               />
               <span className="text-slate-600 dark:text-slate-300 capitalize">
-                {sourceStatus}
+                {sourceStatus === "live" ? t("status_live", "Live") : sourceStatus}
               </span>
             </div>
           </div>
 
-          {/* Navigation Links */}
+          {/* Navigation Links & Controls */}
           <nav className="flex items-center gap-1 sm:gap-2">
             {navLinks.map((item) => {
               const Icon = item.icon;
@@ -94,11 +96,21 @@ export function Navbar({ species = "chicken", sourceStatus = "live" }: NavbarPro
               );
             })}
 
+            {/* Language Switcher Pill (EN | বাংলা) */}
+            <button
+              onClick={toggleLanguage}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 ml-1 rounded-lg text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 border border-slate-300 dark:border-slate-700 transition-colors shadow-sm"
+              title="Change Language / ভাষা পরিবর্তন করুন"
+            >
+              <Globe className="w-3.5 h-3.5 text-emerald-500" />
+              <span>{language === "en" ? "বাংলা" : "EN"}</span>
+            </button>
+
             {/* Dark Mode Toggle */}
             <button
               onClick={toggleTheme}
               className="p-2 ml-1 rounded-lg text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              title="Toggle theme"
+              title={t("theme_toggle", "Toggle theme")}
             >
               {darkMode ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
