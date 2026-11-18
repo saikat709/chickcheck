@@ -1,42 +1,44 @@
+"use client";
+
 import React from "react";
 import { Users, Zap, Layers, Compass } from "lucide-react";
 import { LiveStats } from "@/lib/api";
+import { useLanguage } from "@/lib/LanguageContext";
 
 interface MetricsCardsProps {
   stats: LiveStats;
 }
 
 export function MetricsCards({ stats }: MetricsCardsProps) {
-  // If multi-species detected, show breakdown
-  const speciesBreakdown = stats.species_counts && Object.keys(stats.species_counts).length > 1
-    ? Object.entries(stats.species_counts)
-        .map(([sp, cnt]) => `${cnt} ${sp}`)
-        .join(" · ")
-    : null;
+  const { t } = useLanguage();
 
-  const countSubvalue = speciesBreakdown
-    ? `${speciesBreakdown} (${stats.active_count} active)`
-    : `${stats.active_count} active · ${stats.idle_count} idle`;
+  // Honest count display with uncertainty range if available
+  const countValue = stats.density_count !== undefined && stats.density_count > 0
+    ? `${stats.density_count} ± ${stats.uncertainty || 0}`
+    : `${stats.count}`;
+
+  const methodLabel = stats.density_method ? ` · ${stats.density_method.replace(/_/g, " ")}` : "";
+  const countSubvalue = `${stats.active_count} ${t("metric_active_chicks", "active")} · ${stats.idle_count} ${t("metric_idle_chicks", "idle")}${methodLabel}`;
 
   const cards = [
     {
-      label: "Livestock Count",
-      value: stats.count,
+      label: t("metric_tracked_count", "Estimated Flock Count"),
+      value: countValue,
       subvalue: countSubvalue,
       icon: Users,
       color: "text-emerald-500",
       bg: "bg-emerald-500/10",
     },
     {
-      label: "Activity Index",
-      value: `${stats.activity_index.toFixed(1)}`,
-      subvalue: "0 = dormant, 100 = intense",
+      label: t("metric_flock_activity", "Whole-Flock Activity"),
+      value: `${(stats.optical_flow_activity !== undefined ? stats.optical_flow_activity : stats.activity_index).toFixed(1)}%`,
+      subvalue: "Farnebäck motion energy (0-100)",
       icon: Zap,
       color: "text-blue-500",
       bg: "bg-blue-500/10",
     },
     {
-      label: "Crowding Index",
+      label: t("metric_crowding_index", "Crowding & Huddle Index"),
       value: `${(stats.crowding_index * 100).toFixed(1)}%`,
       subvalue: stats.crowding_index > 0.3 ? "Elevated huddle density" : "Normal spacing",
       icon: Layers,
@@ -44,12 +46,12 @@ export function MetricsCards({ stats }: MetricsCardsProps) {
       bg: stats.crowding_index > 0.3 ? "bg-amber-500/10" : "bg-purple-500/10",
     },
     {
-      label: "Flock Dispersion",
-      value: `${stats.dispersion.toFixed(1)}x`,
-      subvalue: "Normalized body-lengths",
+      label: t("metric_flock_health", "Flock Health Index"),
+      value: `${Math.round(stats.flock_health_score || 100)}%`,
+      subvalue: stats.status ? `${stats.status.toUpperCase()}` : "Healthy",
       icon: Compass,
-      color: "text-teal-500",
-      bg: "bg-teal-500/10",
+      color: stats.flock_health_score < 70 ? "text-rose-500" : "text-teal-500",
+      bg: stats.flock_health_score < 70 ? "bg-rose-500/10" : "bg-teal-500/10",
     },
   ];
 

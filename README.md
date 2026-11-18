@@ -1,7 +1,7 @@
 # 🐔 ChickCheck
-## Complete Livestock Monitoring System
+## Commercial Poultry & Livestock Behavioral Monitoring Platform
 
-**ChickCheck** is an end-to-end computer-vision and kinematic behavioral monitoring platform for livestock. Built with **FastAPI**, **Ultralytics YOLO11 + ByteTrack**, and **Next.js 14**, ChickCheck continuously analyzes video feeds to detect animals, assign persistent tracking IDs, calculate real-time kinematics, evaluate 10 biological anomaly screening rules, stream live annotated MJPEG video and SSE event feeds, and dispatch alerts to farm owners across Telegram, Webhook, and SMTP Email.
+**ChickCheck** is an end-to-end computer-vision and kinetic behavioral monitoring platform engineered for real commercial poultry sheds and livestock barns. Built with **FastAPI**, **Ultralytics YOLO**, **Dense Optical Flow**, and **Next.js 14**, ChickCheck continuously analyzes surveillance feeds to measure flock-level activity, detect collective thermal stress huddling, screen for immobile bird candidates, monitor barn zone occupancy, and evaluate anomaly rules—all while streaming real-time annotated video and dispatching alerts to farm operators.
 
 ![ChickCheck Live Dashboard](samples/homepage.png)
 
@@ -9,44 +9,65 @@
 
 ---
 
-## 🌟 Key Features
+## 🌾 Commercial Farm Realities & Core Design Principle
 
-- **Continuous Video Pipeline**: Supports local looping video files (`samples/dummy.mp4`) with accurate timeline pacing, or live network streams (`RTSP`, `HTTP`) with automatic reconnection and exponential backoff.
-- **YOLO11 & ByteTrack Kinematics**: Tracks individual animals with stable IDs (`#12`), calculates distance-independent normalized speed (body-lengths/s), displacement, idle duration, heading changes, and bounding-box aspect ratio shifts.
-- **Flock-Level Metrics**: Live aggregation of active vs. idle headcounts, multi-species counts breakdown, flock activity index (0-100), dispersion from centroid, pairwise crowding density, spatial cluster/huddle detection, and a 16x16 enclosure zone occupancy grid.
-- **Adaptive Low-Resolution Enhancement**: Real-time CLAHE on LAB luminance channel and unsharp masking edge definition for low-resolution/degraded surveillance footage (e.g. 360p/480p IoT/RTSP streams). Includes coordinate EMA smoothing to eliminate bounding-box quantization jitter.
-- **Multi-Animal & Multi-Species Flock Monitoring**: Concurrent tracking across multi-species coops (e.g. `chicken,duck` or `all`), individual species kinematic baselines, HSV color appearance histograms for occlusion resilience, and spatial graph clustering for dense huddle detection.
-- **10 Real Behavioral Anomaly Rules**:
-  1. *Prolonged Inactivity*: Animal immobile for > N minutes while flock is active.
-  2. *Sudden Stop*: Velocity collapse following high speed combined with posture change.
-  3. *Fallen / Lying Posture*: Persistent shift in body aspect ratio vs. individual baseline.
-  4. *Social Isolation*: Animal separated by > X body lengths from flock centroid for > N seconds.
-  5. *Erratic / Panic Movement*: Multi-animal speed spike with high zigzag direction change rate.
-  6. *Crowding / Huddling*: High pairwise cluster density indicating heat/cold stress or suffocation risk.
-  7. *Count Drop*: Unexplained decrease in active count vs. rolling window baseline.
-  8. *Low Flock Activity*: Activity significantly below learned diurnal baseline for current hour.
-  9. *Limping / Gait Proxy*: Asymmetric stride detected by low speed with high bounding box jitter.
-  10. *Feeding-Time Deviation*: Anticipated activity fails to manifest during scheduled feeding hours.
-- **Rolling Diurnal Baselines**: Learns hour-by-hour circadian activity patterns using EWMA and MAD (Median Absolute Deviation), gracefully falling back to species profile norms when history is scarce.
-- **Incident Ring Buffer & Evidence Capture**: Captures incident JPEG snapshots with highlighted bounding boxes and exports 10-second MP4 video clips capturing pre-and-post event context.
-- **Multi-Channel Alert Dispatch**: Real-time push via Telegram Bot (with photo attachment), HMAC-signed Webhook JSON POSTs, and SMTP Email.
-- **Quiet Hours & Deduplication**: Configurable cooldowns prevent owner alert fatigue and escalate persistent conditions to `critical`; quiet hours suppress non-critical notifications.
-- **Daily Executive Reports**: Automated daily operational summaries in structured JSON and compilable PDF format.
-- **Mobile-First Responsive Dashboard**: Real-time Next.js frontend with live MJPEG stream, heatmap overlay toggle, Recharts historical trends, animal registry table, interactive motion trail drawer, and alert acknowledgment.
+Commercial broiler and layer sheds present extreme challenges for standard computer vision:
+- **High Bird Density & Occlusions**: Hundreds of birds tightly packed and overlapping. Standard single-bird trackers suffer from heavy bounding box merging and ID switches (benchmarked at >100x ID churn over 150 frames on stock ByteTrack).
+- **Dust, Lighting & Sensor Noise**: Uneven barn illumination, dust speckles, and low-contrast bedding.
+- **Hardware & Bandwidth Constraints**: Systems must run efficiently on local barn edge CPUs or small GPUs without relying on high-bandwidth cloud uplinks.
+
+### Core Principle
+> **Flock-Level Analytics Are Primary and Trustworthy.**  
+> Collective kinetic energy, optical flow activity indices, plumage density estimation, spatial distribution, and zone occupancy metrics are resilient to individual tracking failures.  
+> **Individual Per-Bird Analytics Are Secondary & Best-Effort:** Evaluated only when tracking stability meets strict quality gates (`track_quality >= 0.50`), and experimental rules (such as bounding-box jitter "limping") are explicitly downgraded.
+
+See [AUDIT.md](file:///home/saikat/projects/chickcheck/AUDIT.md) for the complete measured audit of anomaly rules, tracking churn measurements, and validation benchmarks.
 
 ---
 
-## 📋 Species Profile Baseline Reference
+## 🌟 Key Features
 
-A farm monitors **one animal species at a time** (configured via `SPECIES` env variable or UI Settings). Below are the baseline kinematics and class mappings utilized by ChickCheck:
+### 1. Dense Scene Detection & Dual-Regime Counting
+- **Dual-Scale Sliced Inference (SAHI-style)**: Overlapping tile generation and coordinate re-projection for detecting small, distant birds in large commercial sheds (`backend/app/vision/sahi.py`).
+- **Dual-Regime Density Estimation**: Automatically switches between bounding-box counting (sparse scenes) and plumage color segmentation with distance transform peaks (dense crowd scenes) (`backend/app/vision/density_counter.py`).
+- **Honest Uncertainty Ranges**: Reports counts as $N \pm \Delta$ (e.g. `19 ± 2`) with the estimation method clearly indicated, avoiding false-precision counts.
+- **Temporal Count Smoothing**: Sliding window median filter prevents momentary camera occlusion or lighting flicker from raising false count-drop alarms.
 
-| Species | COCO Proxy Class | Class ID | Nominal Aspect Ratio ($W/H$) | Nominal Speed Norm (bl/s) | Flock Dispersion Norm | Behavioral Description |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **Chicken** | `bird` | 14 | 1.05 | 0.08 - 0.85 | 3.5 body-lengths | Active foraging, rapid pecking, sudden heading turns, moderate flocking. |
-| **Duck** | `bird` | 14 | 1.12 | 0.06 - 0.75 | 2.8 body-lengths | Waddling gait, high flock cohesion, synchronized movements. |
-| **Cow** | `cow` | 19 | 1.45 | 0.02 - 0.35 | 4.5 body-lengths | Deliberate slow locomotion, grazing, prolonged sternal rumination postures. |
-| **Sheep** | `sheep` | 18 | 1.25 | 0.04 - 0.50 | 2.2 body-lengths | High herd cohesion, collective movement, vulnerable to huddling stress. |
-| **Goat** | `sheep` | 18 | 1.20 | 0.05 - 0.65 | 4.0 body-lengths | Agile, exploratory, higher dispersion, climbing postures. |
+### 2. ID-Independent Behavior Analytics
+- **Dense Optical Flow (Farnebäck)**: Measures collective kinetic energy on an 8x8 spatial grid in real-time on CPU (<6ms per frame), generating a Whole-Flock Activity Index (0–100) (`backend/app/analysis/optical_flow.py`).
+- **Thermal Stress Clustering**: Differentiates cold-stress tight clustering from heat-stress perimeter crowding.
+- **Immobile Bird Candidate Screening**: Temporal difference decay tracking motionless plumage blobs over extended durations (>30s) while the flock moves, capturing cropped evidence snapshots for operator inspection (`backend/app/analysis/immobile.py`).
+- **Barn Zones & Perspective Scaling**: User-defined polygonal feeder, drinker, resting, and exclusion zones with point-in-polygon assignment and depth-tilt compensation (`backend/app/analysis/zones.py`).
+- **Camera Operational Fault Guard**: Real-time detection of barn blackout/illumination loss, lens obstruction/soiling, and camera tampering/bumps, raising hardware maintenance alerts (`backend/app/vision/camera_guard.py`).
+
+### 3. Operator Feedback Loop & Anomaly Rules
+- **10 Anomaly Rules**: 
+  - Flock-level: *Panic Movement Surge*, *Thermal Stress Huddling*, *Flock Count Drop*, *Depressed Diurnal Activity*, *Feeding Time Rhythm Deviation*, *Camera Hardware Fault*, and *Immobile Bird Candidate*.
+  - Per-bird (quality-gated): *Prolonged Inactivity*, *Sudden Movement Collapse*, and *Fallen / Recumbent Posture*.
+- **Alert Feedback Endpoint**: Operators can verify alerts as `correct` or `false_alarm` via `POST /api/events/{event_id}/feedback` or the UI to minimize false alerts.
+
+### 4. Bilingual Support & Bangladesh Regional Auto-Detection
+- **Auto-Detection**: Automatically detects if the operator's region is Bangladesh (`Asia/Dhaka` timezone or `bn` locale) and defaults to **Bangla (বাংলা)**; defaults to **English** for other regions.
+- **Header Language Switcher**: One-click interactive `EN | বাংলা` toggle in the navigation header with `localStorage` persistence.
+- **Multilingual Executive Reports**: Automated daily executive summaries generated in both English and Bengali (`lang=en` or `lang=bn`).
+
+---
+
+## 📋 Anomaly Rule Reliability Matrix
+
+| Rule | Primary / Gated | Target Signal | Reliability & Commercial Farm Suitability |
+| :--- | :--- | :--- | :--- |
+| **Panic Movement Surge** | Flock-Level | Optical flow kinetic surge + velocity variance | **High**: Reliable disturbance / predator alarm without ID dependence. |
+| **Crowding / Thermal Huddle** | Flock-Level | Pairwise spatial clustering + density mapping | **High**: Detects heater draft clustering (cold) or wall crowding (heat). |
+| **Count Drop** | Flock-Level | Temporally smoothed dual-regime count | **High**: Median filter eliminates single-frame tracking dropouts. |
+| **Low Flock Activity** | Flock-Level | Optical flow activity vs learned diurnal EWMA baseline | **High**: Stable circadian rhythm screening. |
+| **Feeding Deviation** | Flock-Level | Feeder zone occupancy during feeding schedule | **High**: Checks feed availability without individual IDs. |
+| **Camera Hardware Fault** | Flock-Level | Luminance, Laplacian edge variance, frame translation | **High**: Operational alerts for blackout, dirt, or camera bumps. |
+| **Immobile Bird Candidate** | Hybrid | Stationary plumage blob persistence (>30s) | **High**: Reliable mortality and non-ambulatory bird screening. |
+| **Prolonged Inactivity** | Quality-Gated | Individual idle time | **Medium**: Evaluated only when `track_quality >= 0.50`. |
+| **Sudden Stop** | Quality-Gated | Kinematic velocity drop | **Medium**: Evaluated only when `track_quality >= 0.50`. |
+| **Fallen Posture** | Quality-Gated | Aspect ratio change | **Medium**: Requires overhead aspect stability and track quality gate. |
+| **Limping / Gait Proxy** | Experimental | Bounding-box jitter vs herd median | **Downgraded**: Marked experimental due to high occlusion bbox noise. |
 
 ---
 
@@ -56,7 +77,7 @@ A farm monitors **one animal species at a time** (configured via `SPECIES` env v
 - Ubuntu 22.04 LTS or 24.04 LTS
 - Python 3.11 or Python 3.12 (`python3`, `python3-venv`)
 - Node.js 18+ and npm (`node`, `npm`)
-- FFmpeg installed (`sudo apt update && sudo apt install -y ffmpeg`)
+- FFmpeg (`sudo apt update && sudo apt install -y ffmpeg`)
 
 ### 1. Run with Native Scripts
 ```bash
@@ -73,21 +94,26 @@ make migrate
 make test
 make dev
 ```
-Open **http://localhost:3000** in your browser to view the live dashboard!
+Open **http://localhost:3000** in your browser to view the live dashboard!  
 API documentation is available at **http://localhost:8000/docs**.
 
 ---
 
-## 🐳 Running with Docker Compose
+## 🧪 Model Evaluation & Training
 
-ChickCheck includes a complete `docker-compose.yml` orchestrating PostgreSQL, FastAPI backend, and Next.js frontend:
-
+### Run Benchmark Evaluation
+Evaluate detection speed, counting MAE, ID churn, and alert frequencies:
 ```bash
-# Build and run all services in background
-docker compose up --build -d
+.venv/bin/python3 scripts/evaluate.py --video samples/dummy.mp4 --frames 150 --ground-truth 19.0
+```
 
-# View service logs
-docker compose logs -f backend
+### Fine-Tuning a Poultry Model
+To train a dedicated YOLO model on real poultry data rather than generic COCO weights:
+```bash
+# Extract frames, auto-label, and fine-tune YOLO11 on poultry
+.venv/bin/python3 scripts/train_poultry.py --video samples/dummy.mp4 --output-dir ./poultry_dataset --epochs 30
+```
+See [DATASET.md](file:///home/saikat/projects/chickcheck/DATASET.md) for the complete dataset specification, annotation guidelines (CVAT/Roboflow), lighting conditions, age brackets (Day 1 to 42), and bootstrapping procedure.
 
 # Stop services
 docker compose down

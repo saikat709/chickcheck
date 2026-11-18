@@ -1,0 +1,196 @@
+export type Language = "en" | "bn";
+
+export const translations = {
+  en: {
+    // Header & Navigation
+    app_title: "ChickCheck",
+    nav_dashboard: "Dashboard",
+    nav_events: "Alerts & Events",
+    nav_reports: "Daily Reports",
+    nav_settings: "Settings",
+    status_live: "Live",
+    status_reconnecting: "Reconnecting",
+    status_stopped: "Stopped",
+    status_healthy: "Healthy",
+    status_watch: "Watch",
+    status_alert: "Critical Alert",
+    theme_toggle: "Toggle theme",
+    lang_toggle: "বাংলা",
+
+    // Disclaimer
+    disclaimer_notice: "Screening Signal Only: Movement-based computer vision analytics only. Not a veterinary diagnostic instrument.",
+
+    // Metrics Cards
+    metric_flock_health: "Flock Health Index",
+    metric_tracked_count: "Estimated Flock Count",
+    metric_flock_activity: "Whole-Flock Activity",
+    metric_crowding_index: "Crowding & Huddle Index",
+    metric_pipeline_fps: "Processing FPS",
+    metric_regime: "Regime",
+    metric_method: "Method",
+    metric_active_chicks: "Active",
+    metric_idle_chicks: "Resting",
+    metric_uncertainty: "Range",
+
+    // Video & Camera Panel
+    video_panel_title: "Live Flock Vision Feed",
+    video_boxes_toggle: "Boxes & IDs",
+    video_shape_toggle: "Box Shape",
+    video_heatmap_toggle: "Density Heatmap",
+    video_flow_toggle: "Motion Flow",
+    video_zones_toggle: "Barn Zones",
+    video_offline_title: "Camera Feed Offline",
+    video_offline_desc: "Connecting to RTSP video stream...",
+
+    // Alerts Feed
+    alerts_feed_title: "Real-Time Anomaly Alerts",
+    alerts_feed_empty: "No active flock anomalies detected. All parameters within baseline.",
+    alert_ack_button: "Acknowledge",
+    alert_acked: "Acknowledged",
+    alert_feedback_title: "Verify Signal:",
+    alert_feedback_correct: "Correct",
+    alert_feedback_false: "False Alarm",
+    alert_feedback_thank_you: "Feedback saved",
+    alert_severity_critical: "Critical",
+    alert_severity_warning: "Warning",
+    alert_severity_info: "Info",
+
+    // Rule Names
+    rule_prolonged_inactivity: "Prolonged Inactivity",
+    rule_sudden_stop: "Sudden Movement Collapse",
+    rule_fallen_posture: "Fallen / Recumbent Posture",
+    rule_isolation: "Social Isolation",
+    rule_panic_movement: "Flock Panic / Surge",
+    rule_crowding_huddling: "Crowding / Thermal Huddling",
+    rule_count_drop: "Flock Count Drop",
+    rule_low_flock_activity: "Depressed Diurnal Activity",
+    rule_limping_gait: "Asymmetric Gait (Experimental)",
+    rule_feeding_deviation: "Feeding Rhythm Deviation",
+    rule_camera_fault: "Camera Hardware Fault",
+    rule_immobile_bird_candidate: "Immobile Bird Candidate",
+
+    // Zones
+    zones_title: "Barn Zones Occupancy",
+    zone_feeder: "Feeder Area",
+    zone_drinker: "Drinker Line",
+    zone_resting: "Resting Area",
+    zone_exclusion: "Exclusion Zone",
+
+    // Animal Table
+    table_title: "Quality-Tracked Birds",
+    table_col_id: "Entity ID",
+    table_col_species: "Species",
+    table_col_status: "Health Status",
+    table_col_health: "Score",
+    table_col_speed: "Speed (BL/s)",
+    table_col_idle: "Idle Duration",
+    table_col_quality: "Track Quality",
+    table_col_actions: "Action",
+    table_inspect: "Inspect",
+    table_empty: "No individual birds with verified tracking quality in this frame.",
+
+    // Reports & Settings
+    report_title: "Commercial Flock Daily Report",
+    report_generate_btn: "Download PDF",
+    report_executive_summary: "Executive Summary",
+    settings_title: "System & Barn Calibration",
+    settings_saved: "Settings updated successfully",
+  },
+  bn: {
+    // Header & Navigation
+    app_title: "চিকচেক",
+    nav_dashboard: "ড্যাশবোর্ড",
+    nav_events: "সতর্কতা ও ইভেন্ট",
+    nav_reports: "দৈনিক প্রতিবেদন",
+    nav_settings: "সেটিংস",
+    status_live: "লাইভ",
+    status_reconnecting: "পুনঃসংযোগ হচ্ছে",
+    status_stopped: "বন্ধ",
+    status_healthy: "সুস্থ",
+    status_watch: "নজরদারি",
+    status_alert: "জরুরি সতর্কতা",
+    theme_toggle: "থিম পরিবর্তন",
+    lang_toggle: "English",
+
+    // Disclaimer
+    disclaimer_notice: "শুধুমাত্র স্ক্রীনিং সংকেত: এটি চলাচল ভিত্তিক কম্পিউটার ভিশন বিশ্লেষণ। এটি কোনো পশুচিকিৎসা রোগ নির্ণয় নয়।",
+
+    // Metrics Cards
+    metric_flock_health: "খামারের স্বাস্থ্য সূচক",
+    metric_tracked_count: "আনুমানিক পাখির সংখ্যা",
+    metric_flock_activity: "সামগ্রিক তৎপরতা সূচক",
+    metric_crowding_index: "গাদাগাদি ও দলবদ্ধতা সূচক",
+    metric_pipeline_fps: "প্রসেসিং এফপিএস (FPS)",
+    metric_regime: "রেজিম",
+    metric_method: "পদ্ধতি",
+    metric_active_chicks: "সক্রিয় পাখি",
+    metric_idle_chicks: "বিশ্রামরত",
+    metric_uncertainty: "সীমা",
+
+    // Video & Camera Panel
+    video_panel_title: "লাইভ খামার ক্যামেরা ফিড",
+    video_boxes_toggle: "বক্স ও আইডি",
+    video_shape_toggle: "বক্সের ধরন",
+    video_heatmap_toggle: "ঘনত্ব হিটম্যাপ",
+    video_flow_toggle: "গতিপ্রবাহ (Flow)",
+    video_zones_toggle: "শেডের অঞ্চল",
+    video_offline_title: "ক্যামেরা ফিড অফলাইন",
+    video_offline_desc: "RTSP ভিডিও স্ট্রিমে সংযোগ স্থাপন করা হচ্ছে...",
+
+    // Alerts Feed
+    alerts_feed_title: "রিয়েল-টাইম সতর্কতা ফিড",
+    alerts_feed_empty: "কোনো অস্বাভাবিক আচরণ সনাক্ত হয়নি। খামারের সকল সূচক স্বাভাবিক।",
+    alert_ack_button: "স্বীকার করুন",
+    alert_acked: "স্বীকৃত",
+    alert_feedback_title: "সংকেত যাচাই:",
+    alert_feedback_correct: "সঠিক",
+    alert_feedback_false: "ভুল সতর্কতা",
+    alert_feedback_thank_you: "মতামত সংরক্ষিত হয়েছে",
+    alert_severity_critical: "জরুরি",
+    alert_severity_warning: "সতর্কবার্তা",
+    alert_severity_info: "তথ্য",
+
+    // Rule Names
+    rule_prolonged_inactivity: "দীর্ঘস্থায়ী নিশ্চলতা",
+    rule_sudden_stop: "হঠাৎ চলাচল বন্ধ হওয়া",
+    rule_fallen_posture: "অস্বাভাবিক দেহভঙ্গি / পড়ে যাওয়া",
+    rule_isolation: "দলছুট / সামাজিক বিচ্ছিন্নতা",
+    rule_panic_movement: "পাখিদের তীব্র ভীতি / ছোটাছুটি",
+    rule_crowding_huddling: "অতিরিক্ত গাদাগাদি / ঠান্ডাজনিত দলবদ্ধতা",
+    rule_count_drop: "পাখির সংখ্যা হঠাৎ হ্রাস",
+    rule_low_flock_activity: "স্বাভাবিকের চেয়ে কম তৎপরতা",
+    rule_limping_gait: "অসম হাঁটা / খোড়ানো (পরীক্ষামূলক)",
+    rule_feeding_deviation: "খাদ্য গ্রহণের রুটিন ব্যত্যয়",
+    rule_camera_fault: "ক্যামেরা ত্রুটি / বাধা",
+    rule_immobile_bird_candidate: "স্থির পাখি সনাক্ত (পর্যবেক্ষণ প্রয়োজন)",
+
+    // Zones
+    zones_title: "শেডের অঞ্চলভিত্তিক উপস্থিতি",
+    zone_feeder: "খাবার পাত্রের এলাকা",
+    zone_drinker: "পানির লাইনের এলাকা",
+    zone_resting: "বিশ্রামের স্থান",
+    zone_exclusion: "নিষিদ্ধ এলাকা",
+
+    // Animal Table
+    table_title: "ট্র্যাককৃত পাখি তালিকা",
+    table_col_id: "আইডি নং",
+    table_col_species: "প্রজাতি",
+    table_col_status: "স্বাস্থ্য অবস্থা",
+    table_col_health: "স্কোর",
+    table_col_speed: "গতিবেগ",
+    table_col_idle: "স্থির থাকার সময়",
+    table_col_quality: "ট্র্যাকিং মান",
+    table_col_actions: "পদক্ষেপ",
+    table_inspect: "পরিদর্শন",
+    table_empty: "এই ফ্রেমে মানসম্পন্ন ট্র্যাকিংযুক্ত কোনো পাখি নেই।",
+
+    // Reports & Settings
+    report_title: "বাণিজ্যিক খামার দৈনিক প্রতিবেদন",
+    report_generate_btn: "পিডিএফ (PDF) ডাউনলোড",
+    report_executive_summary: "নির্বাহী সারসংক্ষেপ",
+    settings_title: "সিস্টেম ও শেড ক্যালিব্রেশন",
+    settings_saved: "সেটিংস সফলভাবে সংরক্ষিত হয়েছে",
+  },
+};
+
+export type TranslationKey = keyof typeof translations.en;

@@ -3,18 +3,20 @@
 import React, { useState, useEffect } from "react";
 import { DailyReport, fetchDailyReport } from "@/lib/api";
 import { FileText, Download, Calendar, Activity, AlertTriangle, Users, RefreshCw } from "lucide-react";
+import { useLanguage } from "@/lib/LanguageContext";
 
 export default function ReportsPage() {
+  const { language, t } = useLanguage();
   const [selectedDate, setSelectedDate] = useState<string>(() => {
     return new Date().toISOString().split("T")[0];
   });
-  const [report, setReport] = useState<DailyReport | null>(null);
+  const [report, setReport] = useState<(DailyReport & { summary_text?: string }) | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadReport = async () => {
     setLoading(true);
     try {
-      const data = await fetchDailyReport(selectedDate);
+      const data = await fetchDailyReport(selectedDate, language);
       setReport(data);
     } catch (e) {
       console.error("Failed to load daily report:", e);
@@ -25,9 +27,9 @@ export default function ReportsPage() {
 
   useEffect(() => {
     loadReport();
-  }, [selectedDate]);
+  }, [selectedDate, language]);
 
-  const pdfDownloadUrl = `/api/reports/daily?date=${selectedDate}&format=pdf`;
+  const pdfDownloadUrl = `/api/reports/daily?date=${selectedDate}&format=pdf&lang=${language}`;
 
   return (
     <div className="space-y-6">
@@ -36,7 +38,7 @@ export default function ReportsPage() {
         <div>
           <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
             <FileText className="w-6 h-6 text-emerald-600" />
-            Daily Livestock Reports
+            {t("report_title", "Daily Livestock Reports")}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Synthesized operational telemetry, anomaly breakdowns, and downloadable PDF audits
@@ -63,7 +65,7 @@ export default function ReportsPage() {
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-600/20"
           >
             <Download className="w-4 h-4" />
-            <span>Download PDF</span>
+            <span>{t("report_generate_btn", "Download PDF")}</span>
           </a>
         </div>
       </div>
@@ -80,6 +82,19 @@ export default function ReportsPage() {
         </div>
       ) : (
         <div className="space-y-6">
+          {/* Executive Plain-Language Summary Box */}
+          {report.summary_text && (
+            <div className="p-5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/25 border border-emerald-200 dark:border-emerald-800/40 shadow-sm">
+              <h3 className="font-bold text-sm text-emerald-800 dark:text-emerald-400 mb-1.5 flex items-center gap-1.5">
+                <FileText className="w-4 h-4" />
+                {t("report_executive_summary", "Executive Summary")}
+              </h3>
+              <p className="text-sm text-emerald-950 dark:text-emerald-100 leading-relaxed">
+                {report.summary_text}
+              </p>
+            </div>
+          )}
+
           {/* Metric Summary Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">

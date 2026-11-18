@@ -19,11 +19,16 @@ from backend.app.vision.tracker_state import TrackerPool, AnimalTrackState
 from backend.app.vision.annotator import FrameAnnotator
 from backend.app.vision.heatmap import HeatmapAccumulator
 from backend.app.analysis.metrics import compute_flock_metrics
-from backend.app.analysis.anomalies import AnomalyDetector
+from backend.app.analysis.anomalies import AnomalyDetector, AnomalyFinding
 from backend.app.analysis.health_score import compute_animal_health_score, compute_flock_health_score
 from backend.app.analysis.baseline import BaselineEngine
 from backend.app.services.recorder import VideoClipRecorder
 from backend.app.alerts.engine import AlertEngine
+from backend.app.analysis.optical_flow import FlockFlowAnalyzer
+from backend.app.vision.density_counter import FlockDensityCounter
+from backend.app.analysis.immobile import ImmobileBirdDetector
+from backend.app.vision.camera_guard import CameraGuard
+from backend.app.analysis.zones import BarnZoneManager
 
 logger = logging.getLogger("chickcheck.pipeline")
 
@@ -57,6 +62,13 @@ class LivestockPipeline:
         self.detector: Optional[LivestockDetector] = None
         self.anomaly_detector: Optional[AnomalyDetector] = None
 
+        # Commercial flock analytical engines (flock-level trustworthy signals)
+        self.flow_analyzer = FlockFlowAnalyzer(grid_size=(8, 8))
+        self.density_counter = FlockDensityCounter(history_size=15)
+        self.immobile_detector = ImmobileBirdDetector(min_duration_s=25.0)
+        self.camera_guard = CameraGuard()
+        self.zone_manager = BarnZoneManager()
+
         # Latest frame buffer for zero-lag MJPEG streaming
         self._latest_jpeg: Optional[bytes] = None
         self._show_heatmap_overlay: bool = False
@@ -64,6 +76,8 @@ class LivestockPipeline:
         self._show_boxes: bool = True
         self._show_trails: bool = False
         self._show_clusters: bool = False
+        self._show_flow: bool = False
+        self._show_zones: bool = False
         self._box_shape: str = "box"
 
         # Live stats cache
@@ -84,6 +98,15 @@ class LivestockPipeline:
             "species_counts": {},
             "max_cluster_size": 0,
             "is_enhanced": False,
+            "density_count": 0,
+            "uncertainty": 0,
+            "count_min": 0,
+            "count_max": 0,
+            "density_regime": "sparse_box",
+            "density_method": "box_tracking",
+            "optical_flow_activity": 50.0,
+            "zone_occupancy": {},
+            "immobile_candidates_count": 0,
         }
 
         # SSE Client Queues
@@ -232,6 +255,44 @@ class LivestockPipeline:
                     inactivity_speed_norm=settings.get_active_thresholds().inactivity_speed_norm,
                 )
 
+                # Optical flow (dense flock motion energy independent of per-bird IDs)
+                flow_metrics = self.flow_analyzer.update(raw_frame)
+
+                # Density counter (dual regime: box tracking vs plumage density map)
+                density_est = self.density_counter.estimate(
+                    raw_frame,
+                    box_count=len(active_tracks),
+                    tracks=active_tracks,
+                )
+
+                # Immobile bird candidate detector (stationary plumage blob over time)
+                immobile_cands = self.immobile_detector.update(
+                    raw_frame,
+                    timestamp=ts,
+                    active_flock_motion=(flow_metrics["activity_index"] > 25.0),
+                )
+
+                # Barn Zones occupancy
+                centroids = [t.last_centroid for t in active_tracks]
+                zone_occupancy = self.zone_manager.compute_zone_occupancy(centroids, (w, h))
+
+                # Inject robust commercial flock metrics
+                flock_metrics["optical_flow_activity"] = flow_metrics["activity_index"]
+                flock_metrics["flow_variance"] = flow_metrics["variance"]
+                flock_metrics["density_regime"] = density_est.regime
+                flock_metrics["density_count"] = density_est.count
+                flock_metrics["uncertainty"] = density_est.uncertainty
+                flock_metrics["count_min"] = density_est.count_min
+                flock_metrics["count_max"] = density_est.count_max
+                flock_metrics["density_method"] = density_est.method
+                flock_metrics["smoothed_count"] = density_est.count
+                flock_metrics["zone_occupancy_pcts"] = zone_occupancy
+
+                # Camera operational fault guard check (every 15 frames)
+                cam_fault = None
+                if frame_counter % 15 == 0:
+                    cam_fault = self.camera_guard.check(raw_frame)
+
                 # Anomaly detection & Diurnal baseline evaluation
                 flock_status = "healthy"
                 flock_health_score = 100.0
@@ -250,6 +311,35 @@ class LivestockPipeline:
                             current_hour=curr_hour,
                         )
 
+                        # Incorporate operational camera faults if detected
+                        if cam_fault:
+                            findings.append(
+                                AnomalyFinding(
+                                    rule_name="camera_fault",
+                                    animal_id=None,
+                                    severity="critical" if cam_fault.get("severity") == "critical" else "warning",
+                                    title=f"Camera Operational Fault: {cam_fault.get('type', '').replace('_', ' ').title()}",
+                                    description=cam_fault.get("description", "Camera fault detected"),
+                                    confidence=0.95,
+                                    metadata=cam_fault,
+                                )
+                            )
+
+                        # Incorporate immobile bird candidates (mortality/downed screening)
+                        if immobile_cands:
+                            for cand in immobile_cands:
+                                findings.append(
+                                    AnomalyFinding(
+                                        rule_name="immobile_bird_candidate",
+                                        animal_id=None,
+                                        severity="critical" if cand["duration_s"] >= 60.0 else "warning",
+                                        title=f"Immobile Bird Candidate ({round(cand['duration_s'], 1)}s)",
+                                        description=f"Stationary bird detected at ({int(cand['centroid'][0])}, {int(cand['centroid'][1])}) for {round(cand['duration_s'], 1)}s while flock is moving. Manual inspection advised.",
+                                        confidence=cand["confidence"],
+                                        metadata={"candidate_id": cand["candidate_id"], "duration_s": cand["duration_s"], "bbox": cand["bbox"]},
+                                    )
+                                )
+
                         active_flock_anomalies = [f.rule_name for f in findings if f.animal_id is None]
                         flock_health_score, flock_status = compute_flock_health_score(
                             active_tracks,
@@ -267,7 +357,7 @@ class LivestockPipeline:
                                 db,
                                 settings.SPECIES,
                                 curr_hour,
-                                flock_metrics["activity_index"],
+                                flock_metrics["optical_flow_activity"],
                                 flock_metrics["mean_speed_norm"],
                             )
                     finally:
@@ -277,7 +367,7 @@ class LivestockPipeline:
                         flock_status = self._latest_stats.get("status", "healthy")
                         flock_health_score = self._latest_stats.get("flock_health_score", 100.0)
 
-                # Render annotated frame with status-colored boxes, trails, HUD, and clusters
+                # Render annotated frame with status-colored boxes, trails, HUD, clusters, flow, and zones
                 annotated = FrameAnnotator.annotate(
                     frame=raw_frame,
                     tracks=active_tracks,
@@ -294,6 +384,16 @@ class LivestockPipeline:
                     show_trails=self._show_trails,
                     show_clusters=self._show_clusters,
                     box_shape=self._box_shape,
+                    show_flow=self._show_flow,
+                    flow_analyzer=self.flow_analyzer,
+                    zone_manager=self.zone_manager,
+                    show_zones=self._show_zones,
+                    immobile_candidates=immobile_cands,
+                    density_info={
+                        "count": density_est.count,
+                        "uncertainty": density_est.uncertainty,
+                        "method": density_est.method,
+                    },
                 )
 
                 # Encode JPEG for MJPEG stream
@@ -309,7 +409,7 @@ class LivestockPipeline:
                     "count": flock_metrics["count"],
                     "active_count": flock_metrics["active_count"],
                     "idle_count": flock_metrics["idle_count"],
-                    "activity_index": flock_metrics["activity_index"],
+                    "activity_index": flock_metrics["optical_flow_activity"],
                     "flock_health_score": flock_health_score,
                     "dispersion": flock_metrics["dispersion"],
                     "crowding_index": flock_metrics["crowding_index"],
@@ -321,6 +421,15 @@ class LivestockPipeline:
                     "species_counts": flock_metrics.get("species_counts", {}),
                     "max_cluster_size": flock_metrics.get("max_cluster_size", 0),
                     "is_enhanced": self._is_enhanced,
+                    "density_count": density_est.count,
+                    "uncertainty": density_est.uncertainty,
+                    "count_min": density_est.count_min,
+                    "count_max": density_est.count_max,
+                    "density_regime": density_est.regime,
+                    "density_method": density_est.method,
+                    "optical_flow_activity": flow_metrics["activity_index"],
+                    "zone_occupancy": zone_occupancy,
+                    "immobile_candidates_count": len(immobile_cands),
                 }
                 with self._lock:
                     self._latest_stats = stats_dict
@@ -466,6 +575,8 @@ class LivestockPipeline:
         box_shape: Optional[str] = None,
         show_trails: Optional[bool] = None,
         show_clusters: Optional[bool] = None,
+        show_flow: Optional[bool] = None,
+        show_zones: Optional[bool] = None,
     ) -> None:
         if show_boxes is not None:
             self._show_boxes = show_boxes
@@ -475,6 +586,10 @@ class LivestockPipeline:
             self._show_trails = show_trails
         if show_clusters is not None:
             self._show_clusters = show_clusters
+        if show_flow is not None:
+            self._show_flow = show_flow
+        if show_zones is not None:
+            self._show_zones = show_zones
 
 
 # Global pipeline singleton
