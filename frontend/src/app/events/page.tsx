@@ -24,7 +24,7 @@ function useOpenBySeverity(refreshKey: number) {
       (["critical", "warning", "info"] as const).map((s) =>
         fetchEvents({ severity: s, acknowledged: false, limit: 200 })
           .then((r) => [s, r.length] as const)
-          .catch(() => [s, 0] as const)
+          .catch(() => [s, -1] as const) // -1 = unknown (never shown as zero)
       )
     ).then((rows) => !cancelled && setCounts(Object.fromEntries(rows)));
     return () => {
@@ -144,7 +144,7 @@ function EventsInner() {
               </span>
               <span className="min-w-0">
                 <span className="block text-xl font-extrabold leading-none text-ink tabular">
-                  {sevCounts ? `${num(sevCounts[s.id])}${sevCounts[s.id] >= 200 ? "+" : ""}` : "–"}
+                  {sevCounts && sevCounts[s.id] >= 0 ? `${num(sevCounts[s.id])}${sevCounts[s.id] >= 200 ? "+" : ""}` : "–"}
                 </span>
                 <span className="mt-1 block truncate text-[11px] font-medium text-ink-3">
                   {s.label} · {t("alerts_filter_open")}

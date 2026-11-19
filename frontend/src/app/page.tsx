@@ -54,7 +54,7 @@ function HealthRing({ value }: { value: number }) {
 
 function OverviewHero() {
   const { t, language, num } = useLanguage();
-  const { stats, hasStats, openAlerts, openAlertsCapped, isLive } = useLiveData();
+  const { stats, hasStats, openAlerts, openAlertsCapped, isLive, lastReceivedAt } = useLiveData();
   const lastTime = useLastReceivedLabel();
   const stale = hasStats && !isLive;
   const camera = useCameraState();
@@ -93,10 +93,11 @@ function OverviewHero() {
             <span className="capitalize">
               {t("hero_species")}: {stats.species}
             </span>
-            {stats.timestamp > 0 && (
+            {/* Receipt time, not stats.timestamp: for file sources that is the video clock, not wall-clock */}
+            {lastReceivedAt && (
               <>
                 {" · "}
-                {t("hero_updated")} {timeAgo(stats.timestamp, language)}
+                {t("hero_updated")} {timeAgo(lastReceivedAt / 1000, language)}
               </>
             )}
           </p>
