@@ -11,6 +11,11 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Segmented, SettingRow, Switch } from "@/components/ui/Controls";
 import { EmptyState, Skeleton } from "@/components/ui/States";
 import { cn } from "@/lib/format";
+import { PushSettings } from "@/components/pwa/PushSettings";
+import { IosInstallSteps } from "@/components/pwa/PwaBanners";
+import { usePwa } from "@/lib/PwaContext";
+import { Modal } from "@/components/ui/Overlay";
+import { Download, Share } from "lucide-react";
 
 interface FormState {
   species: string;
@@ -214,6 +219,7 @@ export default function SettingsPage() {
                   ]}
                 />
               </SettingRow>
+              <InstallRow />
               <SettingRow title={t("settings_theme")} description={t("settings_theme_desc")}>
                 <Segmented
                   value={theme}
@@ -322,14 +328,17 @@ export default function SettingsPage() {
                       {testResult.error ? (
                         <div className="rounded-xl bg-crit-soft p-3 text-xs text-crit">{testResult.error}</div>
                       ) : (
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
                           <TestResult name={t("settings_telegram")} r={testResult.telegram} t={t} />
                           <TestResult name={t("settings_webhook")} r={testResult.webhook} t={t} />
                           <TestResult name={t("settings_email")} r={testResult.email} t={t} />
+                          {testResult.webpush?.enabled && <TestResult name={t("push_title")} r={testResult.webpush} t={t} />}
                         </div>
                       )}
                     </div>
                   )}
+
+                  <PushSettings />
 
                   {/* Telegram */}
                   <div className="rounded-xl border border-line p-4">
@@ -471,5 +480,37 @@ export default function SettingsPage() {
         </form>
       </div>
     </div>
+  );
+}
+
+/** Install entry point that is always reachable (the banner is snoozable). */
+function InstallRow() {
+  const { t } = useLanguage();
+  const { standalone, isIOS, canPromptInstall, promptInstall } = usePwa();
+  const [iosOpen, setIosOpen] = useState(false);
+  return (
+    <SettingRow title={t("install_setting")} description={standalone ? t("installed") : canPromptInstall || isIOS ? t("install_setting_desc") : t("install_unavailable")}>
+      {standalone ? (
+        <span className="inline-flex items-center gap-1 rounded-md bg-ok-soft px-2 py-1 text-xs font-semibold text-ok">
+          <CheckCircle2 className="h-3.5 w-3.5" />
+          {t("installed")}
+        </span>
+      ) : canPromptInstall ? (
+        <button type="button" onClick={() => promptInstall()} className="btn btn-primary btn-sm">
+          <Download className="h-3.5 w-3.5" />
+          {t("install_button")}
+        </button>
+      ) : isIOS ? (
+        <>
+          <button type="button" onClick={() => setIosOpen(true)} className="btn btn-secondary btn-sm">
+            <Share className="h-3.5 w-3.5" />
+            {t("install_how")}
+          </button>
+          <Modal open={iosOpen} onClose={() => setIosOpen(false)} title={t("install_ios_title")}>
+            <IosInstallSteps />
+          </Modal>
+        </>
+      ) : null}
+    </SettingRow>
   );
 }

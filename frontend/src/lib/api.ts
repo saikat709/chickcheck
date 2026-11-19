@@ -264,3 +264,29 @@ export async function fetchHeatmapGrid(): Promise<HeatmapGrid> {
   if (!res.ok) throw new Error("Failed to fetch heatmap");
   return res.json();
 }
+
+// ── Web push ──────────────────────────────────────────────────────────────
+export type PushSeverity = "info" | "warning" | "critical";
+
+export async function fetchPushPublicKey(): Promise<{ enabled: boolean; public_key: string | null }> {
+  const res = await fetch(`${API_BASE}/api/push/public-key`);
+  if (!res.ok) throw new Error("Failed to fetch push configuration");
+  return res.json();
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || `Request failed: ${path}`);
+  return res.json();
+}
+
+export const pushSubscribe = (subscription: PushSubscriptionJSON, min_severity: PushSeverity) =>
+  postJson<{ subscribed: boolean; min_severity: PushSeverity }>("/api/push/subscribe", { subscription, min_severity });
+export const pushStatus = (endpoint: string) =>
+  postJson<{ subscribed: boolean; min_severity: PushSeverity | null }>("/api/push/status", { endpoint });
+export const pushUnsubscribe = (endpoint: string) => postJson<{ unsubscribed: boolean }>("/api/push/unsubscribe", { endpoint });
+export const pushTest = (endpoint: string) => postJson<{ success: boolean; error?: string }>("/api/push/test", { endpoint });
