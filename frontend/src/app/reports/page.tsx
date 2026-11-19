@@ -1,199 +1,240 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Download, Calendar, Bird, Zap, HeartPulse, BellRing, FileText, BarChart3, ListOrdered, Clock3, AlertOctagon } from "lucide-react";
 import { DailyReport, fetchDailyReport } from "@/lib/api";
-import { FileText, Download, Calendar, Activity, AlertTriangle, Users, RefreshCw } from "lucide-react";
 import { useLanguage } from "@/lib/LanguageContext";
+import { Language } from "@/lib/translations";
+import { ruleKey, formatTime } from "@/lib/format";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Segmented } from "@/components/ui/Controls";
+import { StatTile } from "@/components/ui/StatTile";
+import { EmptyState, Skeleton } from "@/components/ui/States";
+import { ChartTooltip, useChartColors } from "@/components/charts/chartKit";
+
+type Report = DailyReport & { summary_text?: string };
 
 export default function ReportsPage() {
-  const { language, t } = useLanguage();
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    return new Date().toISOString().split("T")[0];
-  });
-  const [report, setReport] = useState<(DailyReport & { summary_text?: string }) | null>(null);
+  const { language, t, num } = useLanguage();
+  const c = useChartColors();
+  // Report dates are UTC days on the backend
+  const [date, setDate] = useState(() => new Date().toISOString().split("T")[0]);
+  const [reportLang, setReportLang] = useState<Language>(language);
+  const [report, setReport] = useState<Report | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  const loadReport = async () => {
-    setLoading(true);
-    try {
-      const data = await fetchDailyReport(selectedDate, language);
-      setReport(data);
-    } catch (e) {
-      console.error("Failed to load daily report:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
+  useEffect(() => setReportLang(language), [language]);
 
   useEffect(() => {
-    loadReport();
-  }, [selectedDate, language]);
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+    fetchDailyReport(date, reportLang)
+      .then((r) => !cancelled && setReport(r))
+      .catch(() => {
+        if (!cancelled) {
+          setError(true);
+          setReport(null);
+        }
+      })
+      .finally(() => !cancelled && setLoading(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [date, reportLang]);
 
-  const pdfDownloadUrl = `/api/reports/daily?date=${selectedDate}&format=pdf&lang=${language}`;
+  const hourly = useMemo(
+    () =>
+      report
+        ? Object.entries(report.hourly_activity_trend)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([hour, v]) => ({ hour: hour.slice(0, 2), activity: v ?? null }))
+        : [],
+    [report]
+  );
+  const hasHourly = hourly.some((h) => h.activity !== null);
+
+  const breakdown = report ? Object.entries(report.alerts_summary.by_type).sort((a, b) => b[1] - a[1]) : [];
+  const maxType = Math.max(1, ...breakdown.map(([, n]) => n));
+  const pdfUrl = `/api/reports/daily?date=${date}&format=pdf&lang=${reportLang}`;
 
   return (
-    <div className="space-y-6">
-      {/* Page Title & Controls */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-            <FileText className="w-6 h-6 text-emerald-600" />
-            {t("report_title", "Daily Livestock Reports")}
-          </h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
-            Synthesized operational telemetry, anomaly breakdowns, and downloadable PDF audits
-          </p>
-        </div>
+    <div>
+      <PageHeader
+        title={t("page_reports_title")}
+        subtitle={t("page_reports_sub")}
+        actions={
+          <>
+            <label className="flex h-9 items-center gap-2 rounded-xl border border-line bg-surface px-3 shadow-card focus-within:border-brand">
+              <Calendar className="h-4 w-4 text-ink-3" />
+              <input
+                type="date"
+                value={date}
+                max={new Date().toISOString().split("T")[0]}
+                onChange={(e) => e.target.value && setDate(e.target.value)}
+                className="bg-transparent text-sm font-semibold text-ink outline-none"
+                aria-label="Report date"
+              />
+            </label>
+            <Segmented<Language>
+              value={reportLang}
+              onChange={setReportLang}
+              ariaLabel={t("report_lang")}
+              options={[
+                { value: "en", label: "EN" },
+                { value: "bn", label: "বাংলা" },
+              ]}
+            />
+            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="btn btn-primary">
+              <Download className="h-4 w-4" />
+              {t("report_generate_btn")}
+            </a>
+          </>
+        }
+      />
 
-        <div className="flex items-center gap-3">
-          {/* Date Selector */}
-          <div className="flex items-center gap-2 bg-white dark:bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
-            <Calendar className="w-4 h-4 text-slate-400" />
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-transparent text-xs sm:text-sm font-semibold outline-none"
+      {loading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-24 w-full" />
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-[118px]" />
+            ))}
+          </div>
+          <Skeleton className="h-72 w-full" />
+        </div>
+      ) : error ? (
+        <Card>
+          <EmptyState icon={AlertOctagon} tone="error" title={t("report_error")} />
+        </Card>
+      ) : !report ? (
+        <Card>
+          <EmptyState icon={FileText} title={t("report_empty")} />
+        </Card>
+      ) : (
+        <div className="space-y-4 sm:space-y-5 animate-fade-in">
+          {report.summary_text && (
+            <section className="relative overflow-hidden rounded-2xl border border-brand/20 bg-brand-soft p-5 sm:p-6">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="flex items-center gap-2 text-sm font-bold text-brand-strong">
+                  <FileText className="h-4 w-4" />
+                  {t("report_executive_summary")}
+                </h2>
+                {report.generated_at && (
+                  <span className="text-[11px] text-ink-3">
+                    {t("report_generated")}: {formatTime(report.generated_at, language, true)}
+                  </span>
+                )}
+              </div>
+              <p className="mt-2 max-w-4xl text-[15px] leading-relaxed text-ink" lang={reportLang}>
+                {report.summary_text}
+              </p>
+            </section>
+          )}
+
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+            <StatTile
+              label={t("report_avg_count")}
+              icon={Bird}
+              value={num(report.flock_summary.avg_count, 1)}
+              caption={t("report_peak_min", undefined, { max: report.flock_summary.max_count, min: report.flock_summary.min_count })}
+              tone="ok"
+            />
+            <StatTile label={t("report_mean_activity")} icon={Zap} value={num(report.flock_summary.avg_activity_index, 1)} unit={`/ ${num(100)}`} meter={report.flock_summary.avg_activity_index} tone="info" />
+            <StatTile label={t("report_health")} icon={HeartPulse} value={num(report.flock_summary.avg_health_score, 1)} unit={`/ ${num(100)}`} meter={report.flock_summary.avg_health_score} tone="ok" />
+            <StatTile
+              label={t("report_anomalies")}
+              icon={BellRing}
+              value={num(report.alerts_summary.total_alerts)}
+              caption={`${t("report_critical")}: ${num(report.alerts_summary.by_severity.critical || 0)}`}
+              tone={(report.alerts_summary.by_severity.critical || 0) > 0 ? "crit" : report.alerts_summary.total_alerts > 0 ? "warn" : "ok"}
             />
           </div>
 
-          {/* Download PDF Button */}
-          <a
-            href={pdfDownloadUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-600/20"
-          >
-            <Download className="w-4 h-4" />
-            <span>{t("report_generate_btn", "Download PDF")}</span>
-          </a>
-        </div>
-      </div>
-
-      {loading ? (
-        <div className="py-24 text-center text-slate-400">
-          <RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin text-slate-500" />
-          <span>Compiling daily report...</span>
-        </div>
-      ) : !report ? (
-        <div className="py-24 text-center text-slate-400">
-          <FileText className="w-10 h-10 mx-auto mb-2 text-slate-500" />
-          <p>No report found for {selectedDate}.</p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Executive Plain-Language Summary Box */}
-          {report.summary_text && (
-            <div className="p-5 rounded-2xl bg-emerald-50/80 dark:bg-emerald-950/25 border border-emerald-200 dark:border-emerald-800/40 shadow-sm">
-              <h3 className="font-bold text-sm text-emerald-800 dark:text-emerald-400 mb-1.5 flex items-center gap-1.5">
-                <FileText className="w-4 h-4" />
-                {t("report_executive_summary", "Executive Summary")}
-              </h3>
-              <p className="text-sm text-emerald-950 dark:text-emerald-100 leading-relaxed">
-                {report.summary_text}
-              </p>
-            </div>
-          )}
-
-          {/* Metric Summary Cards */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-              <span className="text-xs font-semibold text-slate-500">Average Count</span>
-              <div className="text-2xl font-black mt-1">{report.flock_summary.avg_count}</div>
-              <p className="text-xs text-slate-400 mt-1">
-                Peak: {report.flock_summary.max_count} · Min: {report.flock_summary.min_count}
-              </p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-              <span className="text-xs font-semibold text-slate-500">Mean Activity Index</span>
-              <div className="text-2xl font-black text-blue-500 mt-1">
-                {report.flock_summary.avg_activity_index} <span className="text-xs font-normal text-slate-400">/ 100</span>
-              </div>
-              <p className="text-xs text-slate-400 mt-1">Diurnal aggregate</p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-              <span className="text-xs font-semibold text-slate-500">Flock Health Score</span>
-              <div className="text-2xl font-black text-emerald-500 mt-1">
-                {report.flock_summary.avg_health_score} <span className="text-xs font-normal text-slate-400">/ 100</span>
-              </div>
-              <p className="text-xs text-slate-400 mt-1">Movement-based score</p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-              <span className="text-xs font-semibold text-slate-500">Total Anomalies</span>
-              <div className="text-2xl font-black text-amber-500 mt-1">
-                {report.alerts_summary.total_alerts}
-              </div>
-              <p className="text-xs text-slate-400 mt-1">
-                Critical: {report.alerts_summary.by_severity.critical || 0}
-              </p>
-            </div>
-          </div>
-
-          {/* Anomaly & Top Flagged Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Category Breakdown */}
-            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-              <h3 className="font-bold text-base mb-4 flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-500" />
-                Anomaly Breakdown by Category
-              </h3>
-              <div className="space-y-3">
-                {Object.entries(report.alerts_summary.by_type).length === 0 ? (
-                  <p className="text-xs text-slate-400 py-4">No anomalies logged for this date.</p>
-                ) : (
-                  Object.entries(report.alerts_summary.by_type).map(([type, count]) => (
-                    <div key={type} className="flex items-center justify-between text-sm py-1.5 border-b border-slate-100 dark:border-slate-800">
-                      <span className="capitalize text-slate-700 dark:text-slate-300">
-                        {type.replace(/_/g, " ")}
-                      </span>
-                      <span className="font-bold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-xs">
-                        {count} incidents
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* Most Flagged Animals */}
-            <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-              <h3 className="font-bold text-base mb-4 flex items-center gap-2">
-                <Users className="w-4 h-4 text-emerald-600" />
-                Most Flagged Livestock Tracks
-              </h3>
-              {report.alerts_summary.top_flagged_animals.length === 0 ? (
-                <p className="text-xs text-slate-400 py-4">No specific animals repeatedly flagged.</p>
+          <Card>
+            <CardHeader icon={Clock3} title={t("report_hourly")} subtitle={t("report_hourly_sub")} />
+            <CardBody>
+              {!hasHourly ? (
+                <EmptyState title={t("report_no_hourly")} />
               ) : (
-                <div className="space-y-3">
-                  {report.alerts_summary.top_flagged_animals.map((item) => (
-                    <div
-                      key={item.animal_id}
-                      className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-sm">Track #{item.animal_id}</span>
-                        <span className="text-xs text-slate-400 capitalize">({report.species})</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-semibold text-red-500">
-                          {item.flag_count} alerts
-                        </span>
-                        <span className="text-xs px-2.5 py-1 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20 font-medium">
-                          {item.flag_count >= 3 ? "Inspect Animal" : "Monitor Track"}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
+                <div className="h-60">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={hourly} margin={{ top: 4, right: 4, left: 0, bottom: 0 }} barCategoryGap={2}>
+                      <CartesianGrid vertical={false} stroke={c.grid} />
+                      <XAxis dataKey="hour" tickFormatter={(h) => num(Number(h)).padStart(2, num(0))} tickLine={false} axisLine={false} interval={1} />
+                      <YAxis domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={(v) => num(v)} tickLine={false} axisLine={false} width={36} />
+                      <Tooltip content={<ChartTooltip />} cursor={{ fill: c.grid, opacity: 0.5 }} />
+                      <Bar dataKey="activity" name={t("chart_activity")} fill={c.series1} radius={[4, 4, 0, 0]} isAnimationActive={false} />
+                    </BarChart>
+                  </ResponsiveContainer>
                 </div>
               )}
-            </div>
+            </CardBody>
+          </Card>
+
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 lg:grid-cols-2">
+            <Card>
+              <CardHeader icon={BarChart3} title={t("report_breakdown")} />
+              <CardBody>
+                {breakdown.length === 0 ? (
+                  <EmptyState title={t("report_none_logged")} tone="ok" />
+                ) : (
+                  <ul className="space-y-3">
+                    {breakdown.map(([type, n]) => (
+                      <li key={type}>
+                        <div className="mb-1 flex items-center justify-between gap-3 text-xs">
+                          <span className="truncate font-medium text-ink-2">{t(ruleKey(type), type.replace(/_/g, " "))}</span>
+                          <span className="font-bold text-ink tabular">{num(n)}</span>
+                        </div>
+                        <div className="h-2 overflow-hidden rounded-full bg-surface-3">
+                          <div className="h-full rounded-full bg-brand" style={{ width: `${(n / maxType) * 100}%` }} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader icon={ListOrdered} title={t("report_flagged")} />
+              <CardBody>
+                {report.alerts_summary.top_flagged_animals.length === 0 ? (
+                  <EmptyState title={t("report_none_flagged")} tone="ok" />
+                ) : (
+                  <ul className="divide-y divide-line">
+                    {report.alerts_summary.top_flagged_animals.map((item) => (
+                      <li key={item.animal_id} className="flex items-center justify-between gap-3 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-ink tabular">#{item.animal_id}</span>
+                          <span className="text-xs capitalize text-ink-3">{report.species}</span>
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-xs font-semibold text-ink-2 tabular">
+                            {num(item.flag_count)} {t("report_alerts")}
+                          </span>
+                          <span
+                            className={
+                              item.flag_count >= 3
+                                ? "rounded-md bg-crit-soft px-2 py-1 text-[11px] font-semibold text-crit"
+                                : "rounded-md bg-warn-soft px-2 py-1 text-[11px] font-semibold text-warn"
+                            }
+                          >
+                            {item.flag_count >= 3 ? t("report_inspect") : t("report_monitor")}
+                          </span>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardBody>
+            </Card>
           </div>
         </div>
       )}
     </div>
   );
 }
-

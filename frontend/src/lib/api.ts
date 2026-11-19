@@ -235,3 +235,32 @@ export async function submitEventFeedback(
   if (!res.ok) throw new Error("Failed to submit event feedback");
   return res.json();
 }
+
+export interface HealthStatus {
+  status: "healthy" | "degraded" | string;
+  pipeline_fps: number;
+  last_frame_age_s: number;
+  source_status: string;
+  source_type: "network_stream" | "file_loop" | string;
+  db_status: string;
+  species: string;
+  tracked_count: number;
+}
+
+export async function fetchHealth(): Promise<HealthStatus> {
+  const res = await fetch(`${API_BASE}/api/health`);
+  if (!res.ok) throw new Error("Failed to fetch system health");
+  return res.json();
+}
+
+export interface HeatmapGrid {
+  rows: number;
+  cols: number;
+  grid: number[][];
+}
+
+export async function fetchHeatmapGrid(): Promise<HeatmapGrid> {
+  const res = await fetch(`${API_BASE}/api/heatmap?format=json`);
+  if (!res.ok) throw new Error("Failed to fetch heatmap");
+  return res.json();
+}

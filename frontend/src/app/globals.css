@@ -2,44 +2,282 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ──────────────────────────────────────────────────────────────────────────
+   ChickCheck design tokens (RGB triplets → used via tailwind.config.ts)
+   Light = default "day shift": warm cream canvas, white data surfaces,
+   deep forest navigation. Dark = "night shift" for barn-office monitoring.
+   ────────────────────────────────────────────────────────────────────────── */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
-  --card: #ffffff;
-  --card-foreground: #0f172a;
-  --border: #e2e8f0;
-  --muted: #64748b;
+  --canvas: 250 246 236;       /* warm cream */
+  --surface: 255 255 255;      /* clean data panels */
+  --surface-2: 246 241 229;    /* soft beige */
+  --surface-3: 237 230 214;
+  --line: 231 223 206;
+  --line-strong: 214 204 184;
+  --ink: 27 37 30;
+  --ink-2: 72 84 74;
+  --ink-3: 104 113 101;
+  --brand: 46 125 79;          /* fresh green */
+  --brand-strong: 31 92 58;
+  --brand-soft: 226 239 228;
+  --forest: 22 56 40;          /* forest green — nav */
+  --forest-2: 33 76 54;
+  --earth: 138 100 64;         /* earthy brown accent */
+  --earth-soft: 243 234 219;
+  --ok: 46 125 79;
+  --ok-soft: 226 239 228;
+  --warn: 176 101 8;
+  --warn-soft: 252 240 215;
+  --crit: 194 42 42;
+  --crit-soft: 251 228 225;
+  --info: 63 105 165;
+  --info-soft: 228 236 247;
+  --series-1: 46 125 79;       /* validated pair (CVD-safe) */
+  --series-2: 90 111 208;
+  --shadow: 46 38 20;
+  color-scheme: light;
 }
 
 .dark {
-  --background: #090d16;
-  --foreground: #f8fafc;
-  --card: #111827;
-  --card-foreground: #f8fafc;
-  --border: #1f2937;
-  --muted: #94a3b8;
+  --canvas: 12 19 15;
+  --surface: 20 30 24;
+  --surface-2: 26 38 31;
+  --surface-3: 33 47 39;
+  --line: 37 52 43;
+  --line-strong: 53 71 60;
+  --ink: 233 238 229;
+  --ink-2: 183 194 182;
+  --ink-3: 139 151 139;
+  --brand: 76 168 112;
+  --brand-strong: 110 194 140;
+  --brand-soft: 29 55 40;
+  --forest: 10 20 15;
+  --forest-2: 21 39 29;
+  --earth: 199 162 120;
+  --earth-soft: 46 39 29;
+  --ok: 76 168 112;
+  --ok-soft: 29 55 40;
+  --warn: 233 163 66;
+  --warn-soft: 56 41 18;
+  --crit: 240 103 95;
+  --crit-soft: 62 26 25;
+  --info: 125 163 232;
+  --info-soft: 27 40 62;
+  --series-1: 64 160 106;
+  --series-2: 112 136 228;
+  --shadow: 0 0 0;
+  color-scheme: dark;
 }
 
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    @apply bg-canvas text-ink font-sans;
+    /* Inter: disambiguated l/I/1 and slashed zero help read IDs & sensor values */
+    font-feature-settings: "cv05", "zero";
+  }
+  ::selection {
+    background: rgb(var(--brand) / 0.22);
+  }
+  :focus-visible {
+    outline: 2px solid rgb(var(--brand));
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+  /* ── Bangla typography ───────────────────────────────────────────
+     Bengali has tall ascenders (matras, reph) and descending vowel
+     signs (ু ূ ৃ), so it needs more vertical room than Latin and must
+     never be letter-spaced (tracking breaks conjunct shaping). */
+  html[lang="bn"] body {
+    line-height: 1.65;
+    font-feature-settings: normal;
+  }
+  html[lang="bn"] h1,
+  html[lang="bn"] h2,
+  html[lang="bn"] h3 {
+    line-height: 1.4;
+    letter-spacing: 0;
+  }
+  html[lang="bn"] .leading-none,
+  html[lang="bn"] .leading-tight,
+  html[lang="bn"] .leading-snug {
+    line-height: 1.4;
+  }
+  html[lang="bn"] [class*="tracking-"] {
+    letter-spacing: 0;
+  }
+  /* Small Bengali text is harder to read than Latin at the same size */
+  html[lang="bn"] .text-\[10\.5px\],
+  html[lang="bn"] .text-\[11px\] {
+    font-size: 12px;
+  }
+  /* Uppercase eyebrows are a Latin idiom; in Bangla use weight instead */
+  html[lang="bn"] .eyebrow,
+  html[lang="bn"] .uppercase {
+    text-transform: none;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface border border-line rounded-2xl shadow-card;
+  }
+  .card-pad {
+    @apply p-4 sm:p-5;
+  }
+  .eyebrow {
+    @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-ink-3;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3.5 h-9 text-sm font-semibold
+      transition-all duration-150 select-none whitespace-nowrap
+      disabled:opacity-50 disabled:pointer-events-none active:scale-[0.98];
+  }
+  .btn-sm {
+    @apply h-8 px-2.5 text-xs rounded-lg;
+  }
+  .btn-primary {
+    @apply bg-brand text-white hover:bg-brand-strong shadow-sm dark:text-forest;
+  }
+  .btn-secondary {
+    @apply bg-surface text-ink border border-line hover:bg-surface-2 hover:border-line-strong shadow-card;
+  }
+  .btn-ghost {
+    @apply text-ink-2 hover:text-ink hover:bg-surface-2;
+  }
+  .btn-danger-soft {
+    @apply bg-crit-soft text-crit hover:bg-crit/15;
+  }
+
+  .input {
+    @apply w-full h-10 rounded-xl border border-line bg-surface px-3 text-sm text-ink
+      placeholder:text-ink-3 transition-colors
+      hover:border-line-strong focus:outline-none focus:border-brand focus:ring-4 focus:ring-brand/15;
+  }
+  .label {
+    @apply block text-xs font-semibold text-ink-2 mb-1.5;
+  }
+  .help {
+    @apply text-xs text-ink-3 mt-1.5 leading-relaxed;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-surface-3/70;
+  }
+  .skeleton::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgb(var(--surface) / 0.55), transparent);
+    animation: shimmer 1.4s infinite;
+  }
+
+  /* Field-row contour texture: the farm signature on the page canvas.
+     Fades out quickly so it never sits behind dense data. */
+  .bg-field-texture {
+    background-image: url("/textures/field-rows.svg");
+    background-size: 720px auto;
+    background-repeat: repeat;
+    -webkit-mask-image: linear-gradient(to bottom, black 0, transparent 340px);
+    mask-image: linear-gradient(to bottom, black 0, transparent 340px);
+    opacity: 0.55;
+  }
+  .dark .bg-field-texture {
+    opacity: 0.18;
+  }
+  .bg-sidebar-texture {
+    background-image: url("/textures/field-rows-light.svg");
+    background-size: 520px auto;
+    opacity: 0.05;
+  }
+}
+
+/* ── Touch ergonomics (phones/tablets, gloved or wet hands in the shed) ── */
+@media (pointer: coarse) {
+  .btn {
+    min-height: 44px;
+  }
+  .btn-sm {
+    min-height: 40px;
+  }
+  [role="radiogroup"] > [role="radio"] {
+    min-height: 36px;
+  }
+  .input {
+    min-height: 44px;
+  }
+  /* Switch: enlarge the hit area without changing the visual size */
+  label:has(> input[role="switch"]) {
+    padding: 10px 0;
+    margin: -10px 0;
+  }
+}
+/* iOS Safari zooms into inputs with text < 16px — keep phones at 16px */
+@media (max-width: 639px) {
+  .input,
+  select.input {
+    font-size: 16px;
+  }
+}
+/* Never let a stray wide element create sideways scrolling on phones */
+html,
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  min-height: 100vh;
+  overflow-x: clip;
+}
+/* Snappier taps; no grey flash on Android */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
 }
 
-/* Custom scrollbars */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 3px;
-}
-.dark ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: rgb(var(--line-strong));
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
 }
 
+/* Recharts: inherit token colours */
+.recharts-cartesian-axis-tick-value {
+  fill: rgb(var(--ink-3));
+  font-size: 11px;
+}
+.recharts-cartesian-grid line {
+  stroke: rgb(var(--line));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

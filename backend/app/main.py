@@ -18,6 +18,7 @@ from backend.app.api.events import router as events_router
 from backend.app.api.config_api import router as config_router
 from backend.app.api.reports import router as reports_router
 from backend.app.api.heatmap import router as heatmap_router
+from backend.app.api.push import router as push_router
 from backend.app.schemas import HealthCheckResponse
 
 # Configure structured logging
@@ -73,6 +74,7 @@ app.include_router(events_router)
 app.include_router(config_router)
 app.include_router(reports_router)
 app.include_router(heatmap_router)
+app.include_router(push_router)
 
 # Mount snapshots and clips static directory
 os.makedirs(settings.DATA_DIR, exist_ok=True)

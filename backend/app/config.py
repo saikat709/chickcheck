@@ -187,6 +187,15 @@ class Settings(BaseSettings):
     SMTP_TO: Optional[str] = None
     SMTP_TLS: bool = True
 
+    # Web Push (VAPID). Generate with scripts/generate_vapid_keys.py.
+    # The private key is used only server-side and is never returned by the API.
+    WEBPUSH_ENABLED: bool = True
+    VAPID_PUBLIC_KEY: Optional[str] = None
+    VAPID_PRIVATE_KEY: Optional[str] = None
+    VAPID_SUBJECT: str = "mailto:alerts@farm.local"
+    # Push endpoints must belong to these services (blocks SSRF via crafted subscriptions).
+    WEBPUSH_ALLOWED_HOSTS: str = "fcm.googleapis.com,push.services.mozilla.com,push.apple.com,notify.windows.com"
+
     # Threshold overrides (optional custom values)
     thresholds: ThresholdSettings = Field(default_factory=ThresholdSettings)
 

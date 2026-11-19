@@ -1,13 +1,16 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { Language, translations, TranslationKey } from "./translations";
 
 interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   toggleLanguage: () => void;
-  t: (key: TranslationKey, fallback?: string) => string;
+  /** Translate a key; `vars` fills `{name}` placeholders. */
+  t: (key: TranslationKey, fallback?: string, vars?: Record<string, string | number>) => string;
+  /** Locale-aware number: Bengali digits (০–৯) in Bangla, Latin in English. */
+  num: (value: number | null | undefined, digits?: number) => string;
 }
 
 const LanguageContext = createContext<LanguageContextType>({
@@ -15,60 +18,74 @@ const LanguageContext = createContext<LanguageContextType>({
   setLanguage: () => {},
   toggleLanguage: () => {},
   t: (key) => key,
+  num: (v, d = 0) => (v ?? 0).toFixed(d),
 });
+
+const STORAGE_KEY = "chickcheck_language";
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>("en");
-  const [isInitialized, setIsInitialized] = useState(false);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("chickcheck_language") as Language | null;
-      if (saved && (saved === "en" || saved === "bn")) {
-        setLanguageState(saved);
+    let initial: Language = "en";
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY) as Language | null;
+      if (saved === "en" || saved === "bn") {
+        initial = saved;
       } else {
-        // Auto-detect if user's region is Bangladesh
-        try {
-          const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-          const browserLang = navigator.language || "";
-          const isBangladesh = tz.includes("Dhaka") || browserLang.toLowerCase().startsWith("bn");
-          const detected: Language = isBangladesh ? "bn" : "en";
-          setLanguageState(detected);
-          localStorage.setItem("chickcheck_language", detected);
-        } catch {
-          setLanguageState("en");
-        }
+        // Auto-detect Bangladesh region (timezone or browser locale)
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+        const browserLang = navigator.language || "";
+        initial = tz.includes("Dhaka") || browserLang.toLowerCase().startsWith("bn") ? "bn" : "en";
+        localStorage.setItem(STORAGE_KEY, initial);
       }
-      setIsInitialized(true);
+    } catch {
+      initial = "en";
     }
+    setLanguageState(initial);
   }, []);
 
-  const setLanguage = (lang: Language) => {
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
+
+  const setLanguage = useCallback((lang: Language) => {
     setLanguageState(lang);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("chickcheck_language", lang);
-    }
-  };
+    try {
+      localStorage.setItem(STORAGE_KEY, lang);
+    } catch {}
+  }, []);
 
-  const toggleLanguage = () => {
-    const nextLang: Language = language === "en" ? "bn" : "en";
-    setLanguage(nextLang);
-  };
+  const toggleLanguage = useCallback(() => {
+    setLanguage(language === "en" ? "bn" : "en");
+  }, [language, setLanguage]);
 
-  const t = (key: TranslationKey, fallback?: string): string => {
-    const dict = translations[language];
-    if (dict && key in dict) {
-      return dict[key];
-    }
-    const enDict = translations.en;
-    if (enDict && key in enDict) {
-      return enDict[key];
-    }
-    return fallback || key;
-  };
+  const numFmt = useCallback(
+    (value: number | null | undefined, digits = 0): string => {
+      const v = Number.isFinite(value as number) ? (value as number) : 0;
+      return v.toLocaleString(language === "bn" ? "bn-BD" : "en-US", {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+        useGrouping: Math.abs(v) >= 10000,
+      });
+    },
+    [language]
+  );
+
+  const t = useCallback(
+    (key: TranslationKey, fallback?: string, vars?: Record<string, string | number>): string => {
+      let s = translations[language]?.[key] ?? translations.en[key] ?? fallback ?? key;
+      if (vars) {
+        for (const [k, v] of Object.entries(vars)) s = s.replace(`{${k}}`, typeof v === "number" ? numFmt(v, 0) : v);
+      }
+      return s;
+    },
+    [language, numFmt]
+  );
+
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, toggleLanguage, t }}>
+    <LanguageContext.Provider value={{ language, setLanguage, toggleLanguage, t, num: numFmt }}>
       {children}
     </LanguageContext.Provider>
   );

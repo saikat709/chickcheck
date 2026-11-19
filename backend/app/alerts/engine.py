@@ -14,6 +14,7 @@ from backend.app.alerts.dedupe import AlertDeduplicator
 from backend.app.alerts.channels.telegram import TelegramChannel
 from backend.app.alerts.channels.webhook import WebhookChannel
 from backend.app.alerts.channels.email import EmailChannel
+from backend.app.alerts.channels.webpush import WebPushChannel
 from backend.app.services.recorder import VideoClipRecorder
 
 logger = logging.getLogger("chickcheck.alerts.engine")
@@ -216,6 +217,13 @@ class AlertEngine:
             )
         else:
             results["email"] = {"enabled": False}
+
+        # Web push to subscribed browsers / installed PWAs (per-device severity filter)
+        try:
+            results["webpush"] = await WebPushChannel.dispatch(event_data)
+        except Exception as e:
+            logger.error(f"Web push dispatch failed: {e}")
+            results["webpush"] = {"success": False, "error": str(e)}
 
         return results
 

@@ -182,9 +182,18 @@ async def test_notifications():
             snapshot_bytes=None,
         )
 
+    # Web push test: every subscribed device, regardless of its severity preference
+    from backend.app.alerts.channels.webpush import WebPushChannel
+
+    wp_res = await WebPushChannel.dispatch(
+        {"event_id": "chickcheck-test", "severity": "info", "title": title, "description": desc, "timestamp": ts},
+        ignore_preferences=True,
+    )
+
     return TestNotificationResponse(
         telegram=tg_res,
         webhook=wh_res,
         email=em_res,
+        webpush=wp_res,
     )
 

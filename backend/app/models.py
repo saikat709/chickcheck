@@ -116,3 +116,20 @@ class DailyReportRecord(Base):
     pdf_path = Column(String(512), nullable=True)
     generated_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+
+
+class PushSubscriptionRecord(Base):
+    """A browser / installed-PWA web push subscription (one per device)."""
+
+    __tablename__ = "push_subscriptions"
+
+    id = Column(Integer, primary_key=True)
+    endpoint = Column(String(1024), unique=True, index=True, nullable=False)
+    p256dh = Column(String(256), nullable=False)
+    auth = Column(String(64), nullable=False)
+    min_severity = Column(String(20), nullable=False, default="critical")  # info | warning | critical
+    user_agent = Column(String(256), nullable=True)
+    failure_count = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow)
+    last_success_at = Column(DateTime, nullable=True)

@@ -144,6 +144,7 @@ class TestNotificationResponse(BaseModel):
     telegram: Dict[str, Any]
     webhook: Dict[str, Any]
     email: Dict[str, Any]
+    webpush: Dict[str, Any] = {}
 
 
 class HealthCheckResponse(BaseModel):

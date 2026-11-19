@@ -1,487 +1,475 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Globe2, ScanSearch, BellRing, Send, Save, CheckCircle2, XCircle, MinusCircle, AlertOctagon, MessageCircle, Webhook, Mail, Moon } from "lucide-react";
 import { ConfigData, fetchConfig, updateConfig, testNotifications } from "@/lib/api";
-import { Settings as SettingsIcon, Save, Send, ShieldAlert, Moon, Bell, CheckCircle2, XCircle, RefreshCw } from "lucide-react";
+import { useLanguage } from "@/lib/LanguageContext";
+import { useTheme } from "@/lib/ThemeContext";
+import { useToast } from "@/components/ui/Toast";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Segmented, SettingRow, Switch } from "@/components/ui/Controls";
+import { EmptyState, Skeleton } from "@/components/ui/States";
+import { cn } from "@/lib/format";
+
+interface FormState {
+  species: string;
+  sensitivity: string;
+  enhanceLowRes: boolean;
+  denseCrowdMode: boolean;
+  quietHoursEnabled: boolean;
+  quietHoursStart: number;
+  quietHoursEnd: number;
+  telegramEnabled: boolean;
+  telegramToken: string;
+  telegramChatId: string;
+  webhookEnabled: boolean;
+  webhookUrl: string;
+  webhookSecret: string;
+  smtpEnabled: boolean;
+  smtpHost: string;
+  smtpPort: number;
+  smtpUser: string;
+  smtpPassword: string;
+  smtpFrom: string;
+  smtpTo: string;
+}
+
+function fromConfig(c: ConfigData): FormState {
+  return {
+    species: c.species,
+    sensitivity: c.sensitivity,
+    enhanceLowRes: c.enhance_low_res ?? true,
+    denseCrowdMode: c.dense_crowd_mode ?? true,
+    quietHoursEnabled: c.quiet_hours_enabled,
+    quietHoursStart: c.quiet_hours_start,
+    quietHoursEnd: c.quiet_hours_end,
+    telegramEnabled: c.telegram_enabled,
+    telegramToken: "",
+    telegramChatId: "",
+    webhookEnabled: c.webhook_enabled,
+    webhookUrl: "",
+    webhookSecret: "",
+    smtpEnabled: c.smtp_enabled,
+    smtpHost: "",
+    smtpPort: 587,
+    smtpUser: "",
+    smtpPassword: "",
+    smtpFrom: "",
+    smtpTo: "",
+  };
+}
+
+const SECTIONS = [
+  { id: "general", key: "settings_sec_general", icon: Globe2 },
+  { id: "detection", key: "settings_sec_detection", icon: ScanSearch },
+  { id: "alerting", key: "settings_sec_alerting", icon: Moon },
+  { id: "notifications", key: "settings_sec_notifications", icon: BellRing },
+] as const;
+
+function ConfiguredBadge({ ok, t }: { ok: boolean; t: (k: "settings_configured" | "settings_not_configured") => string }) {
+  return (
+    <span className={cn("rounded-md px-1.5 py-0.5 text-[10.5px] font-semibold ring-1 ring-inset", ok ? "bg-ok-soft text-ok ring-ok/25" : "bg-surface-2 text-ink-3 ring-line")}>
+      {ok ? t("settings_configured") : t("settings_not_configured")}
+    </span>
+  );
+}
+
+function TestResult({ name, r, t }: { name: string; r: any; t: (k: any) => string }) {
+  const Icon = r?.success ? CheckCircle2 : r?.enabled ? XCircle : MinusCircle;
+  return (
+    <div className="flex items-start gap-2 rounded-xl bg-surface-2 p-3 text-xs">
+      <Icon className={cn("mt-px h-4 w-4 shrink-0", r?.success ? "text-ok" : r?.enabled ? "text-crit" : "text-ink-3")} />
+      <div className="min-w-0">
+        <div className="font-semibold text-ink">{name}</div>
+        <div className={cn("mt-0.5 break-words", r?.success ? "text-ok" : r?.enabled ? "text-crit" : "text-ink-3")}>
+          {r?.success ? t("settings_success") : r?.enabled ? `${t("settings_error")}: ${r?.error ?? ""}` : t("settings_disabled")}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
+  const { t, language, setLanguage } = useLanguage();
+  const { theme, setTheme } = useTheme();
+  const toast = useToast();
+
   const [config, setConfig] = useState<ConfigData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [form, setForm] = useState<FormState | null>(null);
+  const [initial, setInitial] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-
-  // Form states
-  const [species, setSpecies] = useState("chicken");
-  const [sensitivity, setSensitivity] = useState("normal");
-  const [enhanceLowRes, setEnhanceLowRes] = useState(true);
-  const [denseCrowdMode, setDenseCrowdMode] = useState(true);
-  const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
-  const [quietHoursStart, setQuietHoursStart] = useState(22);
-  const [quietHoursEnd, setQuietHoursEnd] = useState(6);
-
-  // Channels
-  const [telegramEnabled, setTelegramEnabled] = useState(false);
-  const [telegramToken, setTelegramToken] = useState("");
-  const [telegramChatId, setTelegramChatId] = useState("");
-
-  const [webhookEnabled, setWebhookEnabled] = useState(false);
-  const [webhookUrl, setWebhookUrl] = useState("");
-  const [webhookSecret, setWebhookSecret] = useState("");
-
-  const [smtpEnabled, setSmtpEnabled] = useState(false);
-  const [smtpHost, setSmtpHost] = useState("");
-  const [smtpPort, setSmtpPort] = useState(587);
-  const [smtpUser, setSmtpUser] = useState("");
-  const [smtpPassword, setSmtpPassword] = useState("");
-  const [smtpFrom, setSmtpFrom] = useState("");
-  const [smtpTo, setSmtpTo] = useState("");
-
-  // Test Notification
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<any>(null);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const c = await fetchConfig();
-        setConfig(c);
-        setSpecies(c.species);
-        setSensitivity(c.sensitivity);
-        if (c.enhance_low_res !== undefined) setEnhanceLowRes(c.enhance_low_res);
-        if (c.dense_crowd_mode !== undefined) setDenseCrowdMode(c.dense_crowd_mode);
-        setQuietHoursEnabled(c.quiet_hours_enabled);
-        setQuietHoursStart(c.quiet_hours_start);
-        setQuietHoursEnd(c.quiet_hours_end);
-        setTelegramEnabled(c.telegram_enabled);
-        setWebhookEnabled(c.webhook_enabled);
-        setSmtpEnabled(c.smtp_enabled);
-      } catch (e) {
-        console.error("Failed to load config:", e);
-      } finally {
-        setLoading(false);
-      }
+  const load = async () => {
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const c = await fetchConfig();
+      setConfig(c);
+      const f = fromConfig(c);
+      setForm(f);
+      setInitial(f);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
     }
+  };
+
+  useEffect(() => {
     load();
   }, []);
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSaving(true);
-    setSaveSuccess(false);
+  const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setForm((f) => (f ? { ...f, [k]: v } : f));
+  const dirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(initial), [form, initial]);
 
+  const handleSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!form) return;
+    setSaving(true);
     try {
       const updated = await updateConfig({
-        species,
-        sensitivity,
-        enhance_low_res: enhanceLowRes,
-        dense_crowd_mode: denseCrowdMode,
-        quiet_hours_enabled: quietHoursEnabled,
-        quiet_hours_start: quietHoursStart,
-        quiet_hours_end: quietHoursEnd,
-        telegram_enabled: telegramEnabled,
-        telegram_bot_token: telegramToken || undefined,
-        telegram_chat_id: telegramChatId || undefined,
-        webhook_enabled: webhookEnabled,
-        webhook_url: webhookUrl || undefined,
-        webhook_secret: webhookSecret || undefined,
-        smtp_enabled: smtpEnabled,
-        smtp_host: smtpHost || undefined,
-        smtp_port: smtpPort,
-        smtp_user: smtpUser || undefined,
-        smtp_password: smtpPassword || undefined,
-        smtp_from: smtpFrom || undefined,
-        smtp_to: smtpTo || undefined,
+        species: form.species,
+        sensitivity: form.sensitivity,
+        enhance_low_res: form.enhanceLowRes,
+        dense_crowd_mode: form.denseCrowdMode,
+        quiet_hours_enabled: form.quietHoursEnabled,
+        quiet_hours_start: form.quietHoursStart,
+        quiet_hours_end: form.quietHoursEnd,
+        telegram_enabled: form.telegramEnabled,
+        telegram_bot_token: form.telegramToken || undefined,
+        telegram_chat_id: form.telegramChatId || undefined,
+        webhook_enabled: form.webhookEnabled,
+        webhook_url: form.webhookUrl || undefined,
+        webhook_secret: form.webhookSecret || undefined,
+        smtp_enabled: form.smtpEnabled,
+        smtp_host: form.smtpHost || undefined,
+        smtp_port: form.smtpPort,
+        smtp_user: form.smtpUser || undefined,
+        smtp_password: form.smtpPassword || undefined,
+        smtp_from: form.smtpFrom || undefined,
+        smtp_to: form.smtpTo || undefined,
       });
       setConfig(updated);
-      setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 3000);
-    } catch (err) {
-      console.error("Save error:", err);
+      const f = fromConfig(updated);
+      setForm(f);
+      setInitial(f);
+      toast(t("settings_saved"));
+    } catch {
+      toast(t("settings_save_error"), "error");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleTestNotifications = async () => {
+  const handleTest = async () => {
     setTesting(true);
     setTestResult(null);
     try {
-      const res = await testNotifications();
-      setTestResult(res);
-    } catch (e) {
-      console.error("Test notification failed:", e);
-      setTestResult({ error: "Failed to connect to backend dispatch service." });
+      setTestResult(await testNotifications());
+    } catch {
+      toast(t("settings_error"), "error");
     } finally {
       setTesting(false);
     }
   };
 
-  if (loading) {
-    return (
-      <div className="py-24 text-center text-slate-400">
-        <RefreshCw className="w-8 h-8 mx-auto mb-2 animate-spin text-slate-500" />
-        <span>Loading system settings...</span>
-      </div>
-    );
-  }
+  const scrollTo = (id: string) => document.getElementById(`sec-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 
   return (
-    <div className="max-w-4xl mx-auto space-y-8">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-          <SettingsIcon className="w-6 h-6 text-emerald-600" />
-          System Settings & Notification Profiles
-        </h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Configure species profile, detection sensitivity presets, quiet hours, and alerting channels
-        </p>
-      </div>
+    <div>
+      <PageHeader title={t("page_settings_title")} subtitle={t("page_settings_sub")} />
 
-      <form onSubmit={handleSave} className="space-y-6">
-        {/* Section 1: Livestock Species & Sensitivity */}
-        <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-5">
-          <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-            <span>Farm Species & Detection Preset</span>
-          </h2>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                Active Animal Species
-              </label>
-              <select
-                value={species}
-                onChange={(e) => setSpecies(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold capitalize"
-              >
-                {config?.available_species.map((sp) => (
-                  <option key={sp} value={sp}>
-                    {sp.charAt(0).toUpperCase() + sp.slice(1)}
-                  </option>
-                ))}
-                <option value="chicken,duck">Chicken & Duck (Poultry Barn)</option>
-                <option value="sheep,goat">Sheep & Goat (Pasture)</option>
-                <option value="all">All Species (Multi-Animal Barn)</option>
-              </select>
-              <p className="text-xs text-slate-400 mt-1">
-                Single or concurrent multi-species monitoring with adaptive kinematic baselines.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
-                Anomaly Sensitivity Preset
-              </label>
-              <select
-                value={sensitivity}
-                onChange={(e) => setSensitivity(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold capitalize"
-              >
-                {config?.sensitivity_presets.map((pr) => (
-                  <option key={pr} value={pr}>
-                    {pr.charAt(0).toUpperCase() + pr.slice(1)} Preset
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-400 mt-1">
-                Low = fewer alerts, Normal = balanced, High = early warning thresholds.
-              </p>
-            </div>
-          </div>
-
-          {/* Low-Resolution & Dense Crowd Adaptations */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-              <input
-                id="enhance_low_res"
-                type="checkbox"
-                checked={enhanceLowRes}
-                onChange={(e) => setEnhanceLowRes(e.target.checked)}
-                className="mt-1 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
-              />
-              <label htmlFor="enhance_low_res" className="cursor-pointer">
-                <span className="block text-xs font-bold text-slate-900 dark:text-white">
-                  Adaptive Low-Resolution Enhancement (CLAHE)
-                </span>
-                <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Applies contrast-limited adaptive histogram equalization and unsharp masking on low-res/degraded camera feeds.
-                </span>
-              </label>
-            </div>
-
-            <div className="flex items-start gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-              <input
-                id="dense_crowd_mode"
-                type="checkbox"
-                checked={denseCrowdMode}
-                onChange={(e) => setDenseCrowdMode(e.target.checked)}
-                className="mt-1 w-4 h-4 text-emerald-600 rounded border-slate-300 focus:ring-emerald-500"
-              />
-              <label htmlFor="dense_crowd_mode" className="cursor-pointer">
-                <span className="block text-xs font-bold text-slate-900 dark:text-white">
-                  Dense Flock Tracking & Occlusion Re-ID
-                </span>
-                <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                  Enables spatial cluster graph analysis, HSV color appearance histograms, and extended track memory during tight huddles.
-                </span>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Section 2: Quiet Hours */}
-        <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Moon className="w-5 h-5 text-indigo-500" />
-              <div>
-                <h3 className="text-base font-bold">Quiet Hours Filter</h3>
-                <p className="text-xs text-slate-500">Only critical alerts are sent during quiet hours</p>
-              </div>
-            </div>
-            <label className="relative inline-flex items-center cursor-pointer">
-              <input
-                type="checkbox"
-                checked={quietHoursEnabled}
-                onChange={(e) => setQuietHoursEnabled(e.target.checked)}
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600" />
-            </label>
-          </div>
-
-          {quietHoursEnabled && (
-            <div className="grid grid-cols-2 gap-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">Start Hour (24h)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="23"
-                  value={quietHoursStart}
-                  onChange={(e) => setQuietHoursStart(parseInt(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-500 mb-1">End Hour (24h)</label>
-                <input
-                  type="number"
-                  min="0"
-                  max="23"
-                  value={quietHoursEnd}
-                  onChange={(e) => setQuietHoursEnd(parseInt(e.target.value) || 0)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold"
-                />
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Section 3: Notification Channels */}
-        <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-emerald-600" />
-              <div>
-                <h3 className="text-base font-bold">Alert Notification Channels</h3>
-                <p className="text-xs text-slate-500">Configure Telegram Bot, Webhooks, and SMTP Email</p>
-              </div>
-            </div>
-
-            {/* Test Notifications Button */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[200px_1fr] lg:gap-8">
+        {/* Section nav */}
+        <nav className="-mx-1 flex gap-1 overflow-x-auto pb-1 lg:sticky lg:top-24 lg:mx-0 lg:flex-col lg:self-start lg:overflow-visible" aria-label="Settings sections">
+          {SECTIONS.map((s) => (
             <button
-              type="button"
-              onClick={handleTestNotifications}
-              disabled={testing}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition-colors shadow-sm"
+              key={s.id}
+              onClick={() => scrollTo(s.id)}
+              className="flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-ink-2 transition-colors hover:bg-surface hover:text-ink"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>{testing ? "Testing..." : "Send Test Notification"}</span>
+              <s.icon className="h-4 w-4 text-ink-3" />
+              {t(s.key)}
             </button>
-          </div>
+          ))}
+        </nav>
 
-          {/* Test Results Banner */}
-          {testResult && (
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs space-y-1.5">
-              <div className="font-bold text-slate-800 dark:text-slate-200">Channel Test Dispatch Status:</div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-semibold">Telegram:</span>
-                  {testResult.telegram?.success ? (
-                    <span className="text-emerald-500 font-bold flex items-center gap-0.5"><CheckCircle2 className="w-3.5 h-3.5" /> Success</span>
-                  ) : testResult.telegram?.enabled ? (
-                    <span className="text-red-500 font-bold flex items-center gap-0.5"><XCircle className="w-3.5 h-3.5" /> Error: {testResult.telegram?.error}</span>
-                  ) : (
-                    <span className="text-slate-400">Disabled</span>
-                  )}
-                </div>
+        <form onSubmit={handleSave} className="min-w-0 max-w-3xl space-y-5 pb-24">
+          {/* General — client-side preferences, saved instantly */}
+          <Card id="sec-general" className="scroll-mt-24">
+            <CardHeader icon={Globe2} title={t("settings_sec_general")} />
+            <CardBody className="divide-y divide-line pt-1">
+              <SettingRow title={t("lang_label")} description={t("settings_language_desc")}>
+                <Segmented
+                  value={language}
+                  onChange={setLanguage}
+                  options={[
+                    { value: "en", label: "English" },
+                    { value: "bn", label: "বাংলা" },
+                  ]}
+                />
+              </SettingRow>
+              <SettingRow title={t("settings_theme")} description={t("settings_theme_desc")}>
+                <Segmented
+                  value={theme}
+                  onChange={setTheme}
+                  options={[
+                    { value: "light", label: t("theme_light") },
+                    { value: "dark", label: t("theme_dark") },
+                  ]}
+                />
+              </SettingRow>
+            </CardBody>
+          </Card>
 
-                <div className="flex items-center gap-1.5">
-                  <span className="font-semibold">Webhook:</span>
-                  {testResult.webhook?.success ? (
-                    <span className="text-emerald-500 font-bold flex items-center gap-0.5"><CheckCircle2 className="w-3.5 h-3.5" /> Success</span>
-                  ) : testResult.webhook?.enabled ? (
-                    <span className="text-red-500 font-bold flex items-center gap-0.5"><XCircle className="w-3.5 h-3.5" /> Error: {testResult.webhook?.error}</span>
-                  ) : (
-                    <span className="text-slate-400">Disabled</span>
-                  )}
-                </div>
+          {loading ? (
+            <div className="space-y-5">
+              <Skeleton className="h-64 w-full" />
+              <Skeleton className="h-40 w-full" />
+            </div>
+          ) : loadError || !form || !config ? (
+            <Card>
+              <EmptyState
+                icon={AlertOctagon}
+                tone="error"
+                title={t("settings_load_error")}
+                action={
+                  <button type="button" onClick={load} className="btn btn-secondary btn-sm">
+                    {t("retry")}
+                  </button>
+                }
+              />
+            </Card>
+          ) : (
+            <>
+              <Card id="sec-detection" className="scroll-mt-24">
+                <CardHeader icon={ScanSearch} title={t("settings_sec_detection")} />
+                <CardBody className="divide-y divide-line pt-1">
+                  <SettingRow title={t("settings_species")} description={t("settings_species_desc")} htmlFor="species">
+                    <select id="species" value={form.species} onChange={(e) => set("species", e.target.value)} className="input w-full capitalize sm:w-60">
+                      {config.available_species.map((sp) => (
+                        <option key={sp} value={sp}>
+                          {sp.charAt(0).toUpperCase() + sp.slice(1)}
+                        </option>
+                      ))}
+                      <option value="chicken,duck">Chicken & Duck (Poultry Barn)</option>
+                      <option value="sheep,goat">Sheep & Goat (Pasture)</option>
+                      <option value="all">All Species (Multi-Animal Barn)</option>
+                    </select>
+                  </SettingRow>
+                  <SettingRow title={t("settings_sensitivity")} description={t("settings_sensitivity_desc")}>
+                    <Segmented
+                      value={form.sensitivity}
+                      onChange={(v) => set("sensitivity", v)}
+                      options={config.sensitivity_presets.map((p) => ({ value: p, label: p.charAt(0).toUpperCase() + p.slice(1) }))}
+                    />
+                  </SettingRow>
+                  <SettingRow title={t("settings_clahe")} description={t("settings_clahe_desc")} htmlFor="clahe">
+                    <Switch id="clahe" checked={form.enhanceLowRes} onChange={(v) => set("enhanceLowRes", v)} label={t("settings_clahe")} />
+                  </SettingRow>
+                  <SettingRow title={t("settings_dense")} description={t("settings_dense_desc")} htmlFor="dense">
+                    <Switch id="dense" checked={form.denseCrowdMode} onChange={(v) => set("denseCrowdMode", v)} label={t("settings_dense")} />
+                  </SettingRow>
+                </CardBody>
+              </Card>
 
-                <div className="flex items-center gap-1.5">
-                  <span className="font-semibold">Email:</span>
-                  {testResult.email?.success ? (
-                    <span className="text-emerald-500 font-bold flex items-center gap-0.5"><CheckCircle2 className="w-3.5 h-3.5" /> Success</span>
-                  ) : testResult.email?.enabled ? (
-                    <span className="text-red-500 font-bold flex items-center gap-0.5"><XCircle className="w-3.5 h-3.5" /> Error: {testResult.email?.error}</span>
-                  ) : (
-                    <span className="text-slate-400">Disabled</span>
+              <Card id="sec-alerting" className="scroll-mt-24">
+                <CardHeader icon={Moon} title={t("settings_sec_alerting")} />
+                <CardBody className="pt-1">
+                  <SettingRow title={t("settings_quiet")} description={t("settings_quiet_desc")} htmlFor="quiet">
+                    <Switch id="quiet" checked={form.quietHoursEnabled} onChange={(v) => set("quietHoursEnabled", v)} label={t("settings_quiet")} />
+                  </SettingRow>
+                  {form.quietHoursEnabled && (
+                    <div className="grid grid-cols-2 gap-4 border-t border-line pt-4 animate-fade-in">
+                      <div>
+                        <label className="label" htmlFor="qs">
+                          {t("settings_quiet_start")}
+                        </label>
+                        <input id="qs" type="number" min={0} max={23} value={form.quietHoursStart} onChange={(e) => set("quietHoursStart", Math.min(23, Math.max(0, parseInt(e.target.value) || 0)))} className="input tabular" />
+                      </div>
+                      <div>
+                        <label className="label" htmlFor="qe">
+                          {t("settings_quiet_end")}
+                        </label>
+                        <input id="qe" type="number" min={0} max={23} value={form.quietHoursEnd} onChange={(e) => set("quietHoursEnd", Math.min(23, Math.max(0, parseInt(e.target.value) || 0)))} className="input tabular" />
+                      </div>
+                    </div>
                   )}
+                </CardBody>
+              </Card>
+
+              <Card id="sec-notifications" className="scroll-mt-24">
+                <CardHeader
+                  icon={BellRing}
+                  title={t("settings_sec_notifications")}
+                  subtitle={t("settings_channels_desc")}
+                  actions={
+                    <button type="button" onClick={handleTest} disabled={testing} className="btn btn-secondary btn-sm">
+                      <Send className="h-3.5 w-3.5" />
+                      {testing ? t("settings_testing") : t("settings_test")}
+                    </button>
+                  }
+                />
+                <CardBody className="space-y-3">
+                  {testResult && (
+                    <div className="animate-fade-in">
+                      <div className="eyebrow mb-2">{t("settings_test_result")}</div>
+                      {testResult.error ? (
+                        <div className="rounded-xl bg-crit-soft p-3 text-xs text-crit">{testResult.error}</div>
+                      ) : (
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          <TestResult name={t("settings_telegram")} r={testResult.telegram} t={t} />
+                          <TestResult name={t("settings_webhook")} r={testResult.webhook} t={t} />
+                          <TestResult name={t("settings_email")} r={testResult.email} t={t} />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Telegram */}
+                  <div className="rounded-xl border border-line p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-info-soft text-info">
+                          <MessageCircle className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                            {t("settings_telegram")}
+                            <ConfiguredBadge ok={config.telegram_chat_id_set} t={t} />
+                          </div>
+                          <p className="mt-0.5 text-xs text-ink-3">{t("settings_telegram_desc")}</p>
+                        </div>
+                      </div>
+                      <Switch id="tg" checked={form.telegramEnabled} onChange={(v) => set("telegramEnabled", v)} label={t("settings_telegram")} />
+                    </div>
+                    {form.telegramEnabled && (
+                      <div className="mt-4 grid grid-cols-1 gap-3 border-t border-line pt-4 sm:grid-cols-2 animate-fade-in">
+                        <div>
+                          <label className="label" htmlFor="tg-token">Bot token</label>
+                          <input id="tg-token" type="password" autoComplete="off" placeholder="123456:ABC-DEF…" value={form.telegramToken} onChange={(e) => set("telegramToken", e.target.value)} className="input" />
+                        </div>
+                        <div>
+                          <label className="label" htmlFor="tg-chat">Chat ID</label>
+                          <input id="tg-chat" type="text" placeholder="-100123456789 / @channel" value={form.telegramChatId} onChange={(e) => set("telegramChatId", e.target.value)} className="input" />
+                        </div>
+                        <p className="help sm:col-span-2 !mt-0">{t("settings_leave_blank")}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Webhook */}
+                  <div className="rounded-xl border border-line p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-earth-soft text-earth">
+                          <Webhook className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                            {t("settings_webhook")}
+                            <ConfiguredBadge ok={config.webhook_url_set} t={t} />
+                          </div>
+                          <p className="mt-0.5 text-xs text-ink-3">{t("settings_webhook_desc")}</p>
+                        </div>
+                      </div>
+                      <Switch id="wh" checked={form.webhookEnabled} onChange={(v) => set("webhookEnabled", v)} label={t("settings_webhook")} />
+                    </div>
+                    {form.webhookEnabled && (
+                      <div className="mt-4 grid grid-cols-1 gap-3 border-t border-line pt-4 sm:grid-cols-2 animate-fade-in">
+                        <div>
+                          <label className="label" htmlFor="wh-url">URL</label>
+                          <input id="wh-url" type="url" placeholder="https://your-server.com/alerts" value={form.webhookUrl} onChange={(e) => set("webhookUrl", e.target.value)} className="input" />
+                        </div>
+                        <div>
+                          <label className="label" htmlFor="wh-secret">HMAC secret</label>
+                          <input id="wh-secret" type="password" autoComplete="off" placeholder="Optional" value={form.webhookSecret} onChange={(e) => set("webhookSecret", e.target.value)} className="input" />
+                        </div>
+                        <p className="help sm:col-span-2 !mt-0">{t("settings_leave_blank")}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Email */}
+                  <div className="rounded-xl border border-line p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-start gap-3">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand-soft text-brand">
+                          <Mail className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+                            {t("settings_email")}
+                            <ConfiguredBadge ok={config.smtp_host_set} t={t} />
+                          </div>
+                          <p className="mt-0.5 text-xs text-ink-3">{t("settings_email_desc")}</p>
+                        </div>
+                      </div>
+                      <Switch id="smtp" checked={form.smtpEnabled} onChange={(v) => set("smtpEnabled", v)} label={t("settings_email")} />
+                    </div>
+                    {form.smtpEnabled && (
+                      <div className="mt-4 grid grid-cols-1 gap-3 border-t border-line pt-4 sm:grid-cols-3 animate-fade-in">
+                        <div className="sm:col-span-2">
+                          <label className="label" htmlFor="smtp-host">Host</label>
+                          <input id="smtp-host" type="text" placeholder="smtp.gmail.com" value={form.smtpHost} onChange={(e) => set("smtpHost", e.target.value)} className="input" />
+                        </div>
+                        <div>
+                          <label className="label" htmlFor="smtp-port">Port</label>
+                          <input id="smtp-port" type="number" value={form.smtpPort} onChange={(e) => set("smtpPort", parseInt(e.target.value) || 587)} className="input tabular" />
+                        </div>
+                        <div>
+                          <label className="label" htmlFor="smtp-user">User</label>
+                          <input id="smtp-user" type="text" autoComplete="off" value={form.smtpUser} onChange={(e) => set("smtpUser", e.target.value)} className="input" />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="label" htmlFor="smtp-pass">Password</label>
+                          <input id="smtp-pass" type="password" autoComplete="new-password" value={form.smtpPassword} onChange={(e) => set("smtpPassword", e.target.value)} className="input" />
+                        </div>
+                        <div className="sm:col-span-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="label" htmlFor="smtp-from">From</label>
+                            <input id="smtp-from" type="email" placeholder="alerts@farm.local" value={form.smtpFrom} onChange={(e) => set("smtpFrom", e.target.value)} className="input" />
+                          </div>
+                          <div>
+                            <label className="label" htmlFor="smtp-to">To</label>
+                            <input id="smtp-to" type="email" placeholder="owner@farm.local" value={form.smtpTo} onChange={(e) => set("smtpTo", e.target.value)} className="input" />
+                          </div>
+                        </div>
+                        <p className="help sm:col-span-3 !mt-0">{t("settings_leave_blank")}</p>
+                      </div>
+                    )}
+                  </div>
+                </CardBody>
+              </Card>
+            </>
+          )}
+
+          {/* Sticky save bar — appears only with unsaved changes */}
+          {dirty && (
+            <div
+              className="fixed inset-x-0 bottom-[calc(57px+env(safe-area-inset-bottom,0px))] z-30 border-t border-line bg-surface/95 backdrop-blur-md animate-rise-in lg:bottom-0 lg:left-auto lg:right-0 lg:w-[calc(100%-var(--sidebar-w,248px))]"
+            >
+              <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-4 py-3 sm:px-6 lg:px-8">
+                <span className="text-sm font-medium text-ink-2">{t("settings_unsaved")}</span>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setForm(initial)} className="btn btn-ghost">
+                    {t("settings_discard")}
+                  </button>
+                  <button type="submit" disabled={saving} className="btn btn-primary">
+                    <Save className="h-4 w-4" />
+                    {saving ? t("settings_saving") : t("settings_save")}
+                  </button>
                 </div>
               </div>
             </div>
           )}
-
-          {/* 3.1 Telegram */}
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-sm">Telegram Bot (Photos & Alerts)</span>
-              <input
-                type="checkbox"
-                checked={telegramEnabled}
-                onChange={(e) => setTelegramEnabled(e.target.checked)}
-                className="rounded"
-              />
-            </div>
-            {telegramEnabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                <input
-                  type="password"
-                  placeholder="Bot Token (e.g. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11)"
-                  value={telegramToken}
-                  onChange={(e) => setTelegramToken(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
-                />
-                <input
-                  type="text"
-                  placeholder="Chat ID (e.g. -100123456789 or @channelname)"
-                  value={telegramChatId}
-                  onChange={(e) => setTelegramChatId(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* 3.2 Webhook */}
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-sm">Webhook (Signed JSON POST)</span>
-              <input
-                type="checkbox"
-                checked={webhookEnabled}
-                onChange={(e) => setWebhookEnabled(e.target.checked)}
-                className="rounded"
-              />
-            </div>
-            {webhookEnabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                <input
-                  type="url"
-                  placeholder="Webhook URL (https://your-server.com/alerts)"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
-                />
-                <input
-                  type="password"
-                  placeholder="HMAC Signing Secret (Optional)"
-                  value={webhookSecret}
-                  onChange={(e) => setWebhookSecret(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
-                />
-              </div>
-            )}
-          </div>
-
-          {/* 3.3 SMTP Email */}
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-sm">SMTP Email Notifications</span>
-              <input
-                type="checkbox"
-                checked={smtpEnabled}
-                onChange={(e) => setSmtpEnabled(e.target.checked)}
-                className="rounded"
-              />
-            </div>
-            {smtpEnabled && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                <input
-                  type="text"
-                  placeholder="SMTP Host (e.g. smtp.gmail.com)"
-                  value={smtpHost}
-                  onChange={(e) => setSmtpHost(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
-                />
-                <input
-                  type="number"
-                  placeholder="Port (587)"
-                  value={smtpPort}
-                  onChange={(e) => setSmtpPort(parseInt(e.target.value) || 587)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
-                />
-                <input
-                  type="text"
-                  placeholder="User / Login"
-                  value={smtpUser}
-                  onChange={(e) => setSmtpUser(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
-                />
-                <input
-                  type="password"
-                  placeholder="SMTP Password"
-                  value={smtpPassword}
-                  onChange={(e) => setSmtpPassword(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
-                />
-                <input
-                  type="email"
-                  placeholder="From Address"
-                  value={smtpFrom}
-                  onChange={(e) => setSmtpFrom(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
-                />
-                <input
-                  type="email"
-                  placeholder="To Address"
-                  value={smtpTo}
-                  onChange={(e) => setSmtpTo(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Submit Bar */}
-        <div className="flex items-center justify-end gap-3 pt-2">
-          {saveSuccess && (
-            <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-              <CheckCircle2 className="w-4 h-4" /> Configuration successfully saved!
-            </span>
-          )}
-          <button
-            type="submit"
-            disabled={saving}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" />
-            <span>{saving ? "Saving..." : "Save Configuration"}</span>
-          </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }
