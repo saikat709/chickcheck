@@ -1,11 +1,19 @@
-# 🐔 ChickCheck
-## Commercial Poultry & Livestock Behavioral Monitoring Platform
+# 🐔 Khamar Prohori (খামার প্রহরী)
+## Commercial Poultry & Livestock Behavioral Monitoring Platform with Sohayok AI
 
-**ChickCheck** is an end-to-end computer-vision and kinetic behavioral monitoring platform engineered for real commercial poultry sheds and livestock barns. Built with **FastAPI**, **Ultralytics YOLO**, **Dense Optical Flow**, and **Next.js 14**, ChickCheck continuously analyzes surveillance feeds to measure flock-level activity, detect collective thermal stress huddling, screen for immobile bird candidates, monitor barn zone occupancy, and evaluate anomaly rules—all while streaming real-time annotated video and dispatching alerts to farm operators.
+**Khamar Prohori** (formerly ChickCheck) is an end-to-end computer-vision, kinetic behavioral monitoring, and AI co-pilot platform engineered for real commercial poultry sheds and livestock barns. Built with **FastAPI**, **Ultralytics YOLO**, **Dense Optical Flow**, **Fireworks AI**, and **Next.js 14**, Khamar Prohori continuously analyzes surveillance feeds to measure flock-level activity, detect collective thermal stress huddling, screen for immobile bird candidates, monitor barn zone occupancy, and evaluate anomaly rules—all while streaming real-time annotated video and powering **Sohayok AI (সহায়ক এআই)** for intelligent, bilingual poultry management.
 
-![ChickCheck Live Dashboard](samples/homepage.png)
+![Khamar Prohori Live Dashboard](samples/homepage.png)
 
-> ⚠️ **Clinical Disclaimer**: ChickCheck provides an automated, movement-based behavioral screening signal only. It is **not** a clinical veterinary diagnosis or a replacement for professional animal care inspection.
+> ⚠️ **Clinical Disclaimer**: Khamar Prohori provides an automated, movement-based behavioral screening signal only. It is **not** a clinical veterinary diagnosis or a replacement for professional animal care inspection.
+
+---
+
+### 🤖 Sohayok AI (সহায়ক এআই) — Intelligent RAG Co-Pilot
+- **Powered by Fireworks AI**: Fast, bilingual inference with structured poultry veterinary guidance.
+- **RAG Telemetry & Knowledge Engine**: Seamlessly links live shed telemetry (bird count, health index, active alerts, activity) with a curated veterinary knowledge base (brooding schedules, heat stress protocols, vaccination schedules, disease treatments).
+- **Proper Rate Limiting**: Built-in sliding window rate limiter protects backend resources from abuse while keeping farm queries responsive.
+- **Bilingual (English & বাংলা)**: Fluently answers farm operators in both English and Bengali.
 
 ---
 

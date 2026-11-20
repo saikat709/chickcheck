@@ -19,6 +19,7 @@ from backend.app.api.config_api import router as config_router
 from backend.app.api.reports import router as reports_router
 from backend.app.api.heatmap import router as heatmap_router
 from backend.app.api.push import router as push_router
+from backend.app.api.chat import router as chat_router
 from backend.app.schemas import HealthCheckResponse
 
 # Configure structured logging
@@ -51,8 +52,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="ChickCheck API",
-    description="Livestock behavioral monitoring, kinematic tracking, and anomaly detection system.",
+    title="Khamar Prohori API",
+    description="Khamar Prohori - Livestock behavioral monitoring, kinematic tracking, and intelligent AI anomaly detection system.",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -75,6 +76,7 @@ app.include_router(config_router)
 app.include_router(reports_router)
 app.include_router(heatmap_router)
 app.include_router(push_router)
+app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
 
 # Mount snapshots and clips static directory
 os.makedirs(settings.DATA_DIR, exist_ok=True)
@@ -94,17 +96,34 @@ def health_check():
         logger.warning(f"DB health check error: {e}")
 
     now = time.time()
-    last_frame_age = now - pipeline.last_frame_time if pipeline.last_frame_time > 0 else 999.0
-    tracked_count = len(pipeline.tracker_pool.get_active_tracks())
+    try:
+        last_frame_age = now - pipeline.last_frame_time if (pipeline and pipeline.last_frame_time > 0) else 999.0
+    except Exception:
+        last_frame_age = 999.0
 
-    source_type = "network_stream" if pipeline.source and pipeline.source.is_live else "file_loop"
-    overall_status = "healthy" if (pipeline.running and db_ok and last_frame_age < 5.0) else "degraded"
+    try:
+        tracked_count = len(pipeline.tracker_pool.get_active_tracks()) if (pipeline and pipeline.tracker_pool) else 0
+    except Exception:
+        tracked_count = 0
+
+    try:
+        source_type = "network_stream" if (pipeline and pipeline.source and pipeline.source.is_live) else "file_loop"
+        source_status = pipeline.source_status if pipeline else "offline"
+        pipeline_fps = round(pipeline.current_fps, 1) if pipeline else 0.0
+        pipeline_running = pipeline.running if pipeline else False
+    except Exception:
+        source_type = "file_loop"
+        source_status = "offline"
+        pipeline_fps = 0.0
+        pipeline_running = False
+
+    overall_status = "healthy" if (pipeline_running and db_ok and last_frame_age < 15.0) else "degraded"
 
     return HealthCheckResponse(
         status=overall_status,
-        pipeline_fps=round(pipeline.current_fps, 1),
+        pipeline_fps=pipeline_fps,
         last_frame_age_s=round(last_frame_age, 2),
-        source_status=pipeline.source_status,
+        source_status=source_status,
         source_type=source_type,
         db_status="ok" if db_ok else "unreachable",
         species=settings.SPECIES,
@@ -115,7 +134,8 @@ def health_check():
 @app.get("/", tags=["root"])
 def root():
     return {
-        "app": "ChickCheck Livestock Monitoring System",
+        "app": "Khamar Prohori Livestock Monitoring System",
+        "name_bn": "খামার প্রহরী",
         "species": settings.SPECIES,
         "disclaimer": "Movement-based behavioral screening signal only. Not a veterinary diagnosis.",
         "docs_url": "/docs",

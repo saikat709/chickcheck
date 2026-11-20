@@ -7,6 +7,7 @@ import { Topbar } from "./Topbar";
 import { MobileTabBar } from "./MobileTabBar";
 import { ConnectivityBanner, UpdateBar, InstallPrompt } from "@/components/pwa/PwaBanners";
 import { Drawer } from "@/components/ui/Overlay";
+import { SohayokWidget } from "@/components/chat/SohayokWidget";
 import { useLanguage } from "@/lib/LanguageContext";
 import { cn } from "@/lib/format";
 
@@ -67,6 +68,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <MobileTabBar onMore={() => setMobileOpen(true)} moreActive={mobileOpen || pathname.startsWith("/reports") || pathname.startsWith("/settings")} />
       <InstallPrompt />
+      <SohayokWidget />
     </div>
   );
 }

@@ -8,9 +8,9 @@ import { ToastProvider } from "@/components/ui/Toast";
 import { AppShell } from "@/components/shell/AppShell";
 
 export const metadata: Metadata = {
-  title: "ChickCheck — Poultry Flock Intelligence",
-  description: "Computer-vision behavioural monitoring for commercial poultry sheds: flock activity, thermal huddling, immobile-bird screening and alerts.",
-  applicationName: "ChickCheck",
+  title: "Khamar Prohori — Poultry Flock Intelligence",
+  description: "Computer-vision behavioural monitoring for commercial poultry sheds: flock activity, thermal huddling, immobile-bird screening, and Sohayok AI co-pilot.",
+  applicationName: "Khamar Prohori",
   icons: {
     icon: [
       { url: "/favicon.svg", type: "image/svg+xml" },

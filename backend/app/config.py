@@ -120,17 +120,17 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    PROJECT_NAME: str = "ChickCheck"
+    PROJECT_NAME: str = "Khamar Prohori"
     # SPECIES can be single ("chicken") or multi ("chicken,duck" or "all")
     SPECIES: str = "chicken"
     VIDEO_SOURCE: str = "samples/dummy.mp4"
 
     # Vision & Model
-    MODEL_WEIGHTS: str = "yolo11m.pt"  # yolo11n finds ~0 chicks; see README "Choosing a model"
+    MODEL_WEIGHTS: str = "yolo11n.pt"  # Lightweight nano model for low memory footprint on cloud containers
     CUSTOM_WEIGHTS_PATH: Optional[str] = None
     CUSTOM_CLASS_NAMES: Optional[str] = None  # Comma-separated or single class
     HEALTH_CLASSIFIER_PATH: Optional[str] = None
-    PROCESS_EVERY_N: int = 2
+    PROCESS_EVERY_N: int = 3
     INFER_IMGSZ: int = 640
     CONF_THRESHOLD: float = 0.25
     DEVICE: Optional[str] = None  # None for auto-detect (cuda if available else cpu)
@@ -195,6 +195,14 @@ class Settings(BaseSettings):
     VAPID_SUBJECT: str = "mailto:alerts@farm.local"
     # Push endpoints must belong to these services (blocks SSRF via crafted subscriptions).
     WEBPUSH_ALLOWED_HOSTS: str = "fcm.googleapis.com,push.services.mozilla.com,push.apple.com,notify.windows.com"
+
+    # Sohayok AI (RAG Chatbot powered by Fireworks AI)
+    FIREWORKS_API_KEY: str = "fw_XFoEUZYzDkPXjyCxrSgjiu"
+    FIREWORKS_MODEL: str = "accounts/fireworks/models/gpt-oss-120b"
+    FIREWORKS_FALLBACK_MODEL: str = "accounts/fireworks/models/qwen3p8-max"
+    FIREWORKS_BASE_URL: str = "https://api.fireworks.ai/inference/v1"
+    CHAT_RATE_LIMIT_PER_MINUTE: int = 15
+    CHAT_RATE_LIMIT_PER_HOUR: int = 120
 
     # Threshold overrides (optional custom values)
     thresholds: ThresholdSettings = Field(default_factory=ThresholdSettings)

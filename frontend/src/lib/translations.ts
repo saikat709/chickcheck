@@ -2,8 +2,8 @@ export type Language = "en" | "bn";
 
 const en = {
   // ── Brand & shell ───────────────────────────────────────────────
-  app_title: "ChickCheck",
-  app_tagline: "Flock Intelligence",
+  app_title: "Khamar Prohori",
+  app_tagline: "Livestock Intelligence",
   nav_group_monitor: "Monitor",
   nav_group_insights: "Insights",
   nav_group_system: "System",
@@ -13,6 +13,15 @@ const en = {
   nav_events: "Alerts & Events",
   nav_reports: "Reports",
   nav_settings: "Settings",
+  nav_chat: "Sohayok AI",
+  chat_title: "Sohayok AI",
+  chat_subtitle: "AI Poultry Co-Pilot & Farm Assistant",
+  chat_input_placeholder: "Ask Sohayok AI about flock health, heat stress, brooding...",
+  chat_send: "Send",
+  chat_clear: "Clear Chat",
+  chat_sources: "Knowledge & Telemetry Sources",
+  chat_rate_limit: "Rate limit reached. Please wait before asking again.",
+  chat_disclaimer: "AI guidance based on shed telemetry and poultry knowledge base. Verify with a veterinarian.",
   nav_collapse: "Collapse sidebar",
   nav_expand: "Expand sidebar",
   nav_open_menu: "Open menu",
@@ -400,8 +409,8 @@ const en = {
 export type TranslationKey = keyof typeof en;
 
 const bn: Partial<Record<TranslationKey, string>> = {
-  app_title: "চিকচেক",
-  app_tagline: "খামার বুদ্ধিমত্তা",
+  app_title: "খামার প্রহরী",
+  app_tagline: "স্মার্ট খামার বুদ্ধিমত্তা",
   nav_group_monitor: "পর্যবেক্ষণ",
   nav_group_insights: "বিশ্লেষণ",
   nav_group_system: "সিস্টেম",
@@ -411,6 +420,15 @@ const bn: Partial<Record<TranslationKey, string>> = {
   nav_events: "সতর্কতা ও ইভেন্ট",
   nav_reports: "প্রতিবেদন",
   nav_settings: "সেটিংস",
+  nav_chat: "সহায়ক এআই",
+  chat_title: "সহায়ক এআই (Sohayok AI)",
+  chat_subtitle: "কৃত্রিম বুদ্ধিমত্তা চালিত পোল্ট্রি সহকারী",
+  chat_input_placeholder: "ফ্লকের অবস্থা, রোগবালাই, ব্রুডিং সম্পর্কে প্রশ্ন করুন...",
+  chat_send: "পাঠান",
+  chat_clear: "চ্যাট মুছুন",
+  chat_sources: "তথ্যসূত্র ও লাইভ টেলিমেট্রি",
+  chat_rate_limit: "অনুরোধের সীমা অতিক্রম করেছে। দয়া করে কিছুক্ষণ পর চেষ্টা করুন।",
+  chat_disclaimer: "শেড টেলিমেট্রি ও পোল্ট্রি তথ্যভাণ্ডারের উপর ভিত্তি করে পরামর্শ। চিকিৎসকের পরামর্শ নিশ্চিত করুন।",
   nav_collapse: "সাইডবার ছোট করুন",
   nav_expand: "সাইডবার বড় করুন",
   nav_open_menu: "মেনু খুলুন",

@@ -43,7 +43,7 @@ export function SidebarContent({
 
       {/* Brand */}
       <div className={cn("relative flex h-16 items-center gap-3 border-b border-white/[0.07]", collapsed ? "justify-center px-2" : "px-5")}>
-        <Link href="/" onClick={onNavigate} className="flex items-center gap-3 min-w-0" aria-label="ChickCheck">
+        <Link href="/" onClick={onNavigate} className="flex items-center gap-3 min-w-0" aria-label="Khamar Prohori">
           <LogoMark className="h-9 w-9 shrink-0" />
           {!collapsed && (
             <div className="min-w-0 leading-tight">

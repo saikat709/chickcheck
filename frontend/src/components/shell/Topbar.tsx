@@ -35,7 +35,7 @@ export function Topbar() {
     >
       <div className="flex h-14 items-center gap-3 px-4 sm:h-16 sm:px-6 lg:px-8">
         {/* Mobile/tablet: brand + current page (navigation lives in the bottom tab bar) */}
-        <Link href="/" className="shrink-0 lg:hidden" aria-label="ChickCheck">
+        <Link href="/" className="shrink-0 lg:hidden" aria-label="Khamar Prohori">
           <LogoMark className="h-8 w-8" />
         </Link>
         <div className="min-w-0 flex-1 lg:flex-none">
