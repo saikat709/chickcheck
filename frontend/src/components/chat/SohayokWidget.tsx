@@ -49,7 +49,7 @@ const DEFAULT_SUGGESTIONS_BN = [
 
 export function SohayokWidget() {
   const { language, t, num } = useLanguage();
-  const { latest, connectionState } = useLiveData();
+  const { stats, connection } = useLiveData();
   const isBn = language === "bn";
 
   const [isOpen, setIsOpen] = useState(false);
@@ -285,14 +285,14 @@ export function SohayokWidget() {
               <span>
                 {isBn ? "লাইভ ফ্লক:" : "Live Flock:"}{" "}
                 <strong className="text-ink">
-                  {latest ? num(latest.count) : "0"} {isBn ? "পাখি" : "birds"}
+                  {stats ? num(stats.count) : "0"} {isBn ? "পাখি" : "birds"}
                 </strong>
               </span>
               <span>·</span>
               <span>
                 {isBn ? "স্বাস্থ্য:" : "Health:"}{" "}
                 <strong className="text-brand">
-                  {latest ? num(latest.flock_health_score, 0) : "100"}%
+                  {stats ? num(stats.flock_health_score, 0) : "100"}%
                 </strong>
               </span>
             </div>
