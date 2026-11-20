@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+Bengali:wght@400;500;600;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -8,6 +10,9 @@
    deep forest navigation. Dark = "night shift" for barn-office monitoring.
    ────────────────────────────────────────────────────────────────────────── */
 :root {
+  --font-inter: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-hind: 'Hind Siliguri', 'Noto Sans Bengali', system-ui, sans-serif;
+  --font-noto-bn: 'Noto Sans Bengali', system-ui, sans-serif;
   --canvas: 250 246 236;       /* warm cream */
   --surface: 255 255 255;      /* clean data panels */
   --surface-2: 246 241 229;    /* soft beige */

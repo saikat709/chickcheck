@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, Hind_Siliguri, Noto_Sans_Bengali } from "next/font/google";
 import "./globals.css";
 import { LanguageProvider } from "@/lib/LanguageContext";
 import { ThemeProvider, themeInitScript } from "@/lib/ThemeContext";
@@ -7,23 +6,6 @@ import { LiveDataProvider } from "@/lib/LiveDataContext";
 import { PwaProvider } from "@/lib/PwaContext";
 import { ToastProvider } from "@/components/ui/Toast";
 import { AppShell } from "@/components/shell/AppShell";
-
-/*
- * Typography stack — resolved per glyph, so mixed Bangla/English sentences just work:
- *   Inter            → Latin letters, Latin digits, punctuation
- *   Hind Siliguri    → Bengali script, Bengali digits (০–৯), ৳, danda (।)
- *   Noto Sans Bengali→ fallback for any Bengali glyph Hind lacks
- * Only the `bengali` subset of the Bengali faces is loaded (no duplicate Latin bytes).
- */
-const inter = Inter({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-inter", display: "swap" });
-const hind = Hind_Siliguri({ subsets: ["bengali"], weight: ["400", "500", "600", "700"], variable: "--font-hind", display: "swap" });
-const notoBengali = Noto_Sans_Bengali({
-  subsets: ["bengali"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-noto-bn",
-  display: "swap",
-  preload: false, // fallback only — fetched if Hind lacks a glyph
-});
 
 export const metadata: Metadata = {
   title: "ChickCheck — Poultry Flock Intelligence",
@@ -53,7 +35,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${inter.variable} ${hind.variable} ${notoBengali.variable}`} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
