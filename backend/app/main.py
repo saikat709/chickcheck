@@ -20,6 +20,7 @@ from backend.app.api.reports import router as reports_router
 from backend.app.api.heatmap import router as heatmap_router
 from backend.app.api.push import router as push_router
 from backend.app.api.chat import router as chat_router
+from backend.app.api.docs_api import router as docs_router
 from backend.app.schemas import HealthCheckResponse
 
 # Configure structured logging
@@ -55,6 +56,8 @@ app = FastAPI(
     title="Khamar Prohori API",
     description="Khamar Prohori - Livestock behavioral monitoring, kinematic tracking, and intelligent AI anomaly detection system.",
     version="1.0.0",
+    docs_url="/api/swagger",
+    redoc_url="/api/redoc",
     lifespan=lifespan,
 )
 
@@ -77,6 +80,7 @@ app.include_router(reports_router)
 app.include_router(heatmap_router)
 app.include_router(push_router)
 app.include_router(chat_router, prefix="/api/chat", tags=["chat"])
+app.include_router(docs_router, prefix="/api/docs", tags=["docs"])
 
 # Mount snapshots and clips static directory
 os.makedirs(settings.DATA_DIR, exist_ok=True)

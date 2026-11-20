@@ -1,4 +1,4 @@
-import { LayoutDashboard, Video, LineChart, BellRing, FileText, Settings } from "lucide-react";
+import { LayoutDashboard, Video, LineChart, BellRing, FileText, Settings, BookOpen } from "lucide-react";
 import type { TranslationKey } from "@/lib/translations";
 
 export interface NavItem {
@@ -31,7 +31,10 @@ export const NAV: NavGroup[] = [
   },
   {
     key: "nav_group_system",
-    items: [{ href: "/settings", key: "nav_settings", icon: Settings }],
+    items: [
+      { href: "/settings", key: "nav_settings", icon: Settings },
+      { href: "/docs", key: "nav_docs", icon: BookOpen },
+    ],
   },
 ];
 
