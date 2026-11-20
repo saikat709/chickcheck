@@ -42,6 +42,14 @@ DEFAULT_TEAM = [
         "email": "ayon@khamarprohori.com",
         "image": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&h=300&fit=crop&crop=face",
         "bio": "Focuses on YOLO11 kinematic modeling, optical flow algorithms, and Fireworks AI RAG knowledge integration."
+    },
+    {
+        "id": "4",
+        "name": "Fayroz Tasnim",
+        "role": "Product Strategist & Domain Researcher",
+        "email": "fayroztasnim@khamarprohori.com",
+        "image": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&h=300&fit=crop&crop=face",
+        "bio": "Leads domain veterinary research, user experience validation with poultry farmers, and product growth strategy."
     }
 ]
 

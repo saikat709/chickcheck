@@ -76,6 +76,14 @@ const DEFAULT_TEAM: TeamMember[] = [
     email: "ayon@khamarprohori.com",
     image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&h=300&fit=crop&crop=face",
     bio: "YOLO11 kinematic modeling, optical flow integration, and Fireworks AI RAG knowledge engine."
+  },
+  {
+    id: "4",
+    name: "Fayroz Tasnim",
+    role: "Product Strategist & Domain Researcher",
+    email: "fayroztasnim@khamarprohori.com",
+    image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=300&h=300&fit=crop&crop=face",
+    bio: "Leads domain veterinary research, user experience validation with poultry farmers, and product growth strategy."
   }
 ];
 
@@ -841,7 +849,7 @@ export default function DocsPage() {
 function TeamShowcaseGrid({ team }: { team: TeamMember[] }) {
   return (
     <div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {team.map((member) => (
           <div
             key={member.id}
